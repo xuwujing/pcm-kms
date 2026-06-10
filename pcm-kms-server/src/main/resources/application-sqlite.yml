@@ -2,10 +2,11 @@ spring:
   datasource:
     url: jdbc:sqlite:./data/pcm-kms.db
     driver-class-name: org.sqlite.JDBC
+  flyway:
+    enabled: false
 
 kms:
   datasource:
     mode: sqlite
-    url: jdbc:sqlite:./data/pcm-kms.db
   cache:
     type: local

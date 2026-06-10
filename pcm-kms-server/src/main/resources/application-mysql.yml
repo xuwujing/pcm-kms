@@ -4,12 +4,12 @@ spring:
     username: root
     password: 123456
     driver-class-name: com.mysql.cj.jdbc.Driver
+  flyway:
+    enabled: true
+    locations: classpath:db/migration/mysql
 
 kms:
   datasource:
     mode: mysql
-    url: jdbc:mysql://127.0.0.1:3306/pcm_kms?useUnicode=true&characterEncoding=utf8&serverTimezone=Asia/Shanghai
-    username: root
-    password: 123456
   cache:
     type: redis

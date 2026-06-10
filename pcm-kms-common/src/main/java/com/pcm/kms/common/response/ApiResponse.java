@@ -2,6 +2,9 @@ package com.pcm.kms.common.response;
 
 import java.io.Serializable;
 
+/**
+ * 统一 API 响应体
+ */
 public class ApiResponse<T> implements Serializable {
 
     private static final long serialVersionUID = 1L;
@@ -12,27 +15,32 @@ public class ApiResponse<T> implements Serializable {
     private long timestamp;
 
     public static <T> ApiResponse<T> success(T data) {
-        ApiResponse<T> response = new ApiResponse<T>();
-        response.code = 0;
-        response.message = "success";
-        response.data = data;
-        response.timestamp = System.currentTimeMillis();
-        return response;
+        ApiResponse<T> r = new ApiResponse<>();
+        r.code = 0;
+        r.message = "success";
+        r.data = data;
+        r.timestamp = System.currentTimeMillis();
+        return r;
     }
 
-    public int getCode() {
-        return code;
+    public static <T> ApiResponse<T> success() {
+        return success(null);
     }
 
-    public String getMessage() {
-        return message;
+    public static <T> ApiResponse<T> error(int code, String message) {
+        ApiResponse<T> r = new ApiResponse<>();
+        r.code = code;
+        r.message = message;
+        r.timestamp = System.currentTimeMillis();
+        return r;
     }
 
-    public T getData() {
-        return data;
+    public static <T> ApiResponse<T> error(String message) {
+        return error(500, message);
     }
 
-    public long getTimestamp() {
-        return timestamp;
-    }
+    public int getCode() { return code; }
+    public String getMessage() { return message; }
+    public T getData() { return data; }
+    public long getTimestamp() { return timestamp; }
 }

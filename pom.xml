@@ -6,7 +6,7 @@
 
     <groupId>com.pcm.kms</groupId>
     <artifactId>pcm-kms</artifactId>
-    <version>0.1.0-SNAPSHOT</version>
+    <version>0.2.0-SNAPSHOT</version>
     <packaging>pom</packaging>
     <name>pcm-kms</name>
     <description>PCM-KMS parent project</description>
@@ -30,10 +30,18 @@
         <mybatis.plus.version>3.5.7</mybatis.plus.version>
         <sqlite.jdbc.version>3.46.0.0</sqlite.jdbc.version>
         <flyway.version>9.22.3</flyway.version>
+        <sa.token.version>1.37.0</sa.token.version>
+        <hutool.version>5.8.30</hutool.version>
+        <bouncycastle.version>1.79</bouncycastle.version>
+        <knife4j.version>4.3.0</knife4j.version>
+        <lombok.version>1.18.30</lombok.version>
+        <mysql.connector.version>8.0.33</mysql.connector.version>
+        <caffeine.version>2.9.3</caffeine.version>
     </properties>
 
     <dependencyManagement>
         <dependencies>
+            <!-- Spring Boot -->
             <dependency>
                 <groupId>org.springframework.boot</groupId>
                 <artifactId>spring-boot-dependencies</artifactId>
@@ -41,6 +49,7 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- Spring Cloud -->
             <dependency>
                 <groupId>org.springframework.cloud</groupId>
                 <artifactId>spring-cloud-dependencies</artifactId>
@@ -48,20 +57,87 @@
                 <type>pom</type>
                 <scope>import</scope>
             </dependency>
+            <!-- Project modules -->
+            <dependency>
+                <groupId>com.pcm.kms</groupId>
+                <artifactId>pcm-kms-common</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.pcm.kms</groupId>
+                <artifactId>pcm-kms-domain</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.pcm.kms</groupId>
+                <artifactId>pcm-kms-core</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.pcm.kms</groupId>
+                <artifactId>pcm-kms-infra</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <dependency>
+                <groupId>com.pcm.kms</groupId>
+                <artifactId>pcm-kms-client-starter</artifactId>
+                <version>${project.version}</version>
+            </dependency>
+            <!-- MyBatis-Plus -->
             <dependency>
                 <groupId>com.baomidou</groupId>
                 <artifactId>mybatis-plus-boot-starter</artifactId>
                 <version>${mybatis.plus.version}</version>
             </dependency>
+            <!-- SQLite -->
             <dependency>
                 <groupId>org.xerial</groupId>
                 <artifactId>sqlite-jdbc</artifactId>
                 <version>${sqlite.jdbc.version}</version>
             </dependency>
+            <!-- Flyway -->
             <dependency>
                 <groupId>org.flywaydb</groupId>
                 <artifactId>flyway-core</artifactId>
                 <version>${flyway.version}</version>
+            </dependency>
+            <!-- MySQL -->
+            <dependency>
+                <groupId>mysql</groupId>
+                <artifactId>mysql-connector-java</artifactId>
+                <version>${mysql.connector.version}</version>
+            </dependency>
+            <!-- Sa-Token -->
+            <dependency>
+                <groupId>cn.dev33</groupId>
+                <artifactId>sa-token-spring-boot-starter</artifactId>
+                <version>${sa.token.version}</version>
+            </dependency>
+            <!-- Hutool -->
+            <dependency>
+                <groupId>cn.hutool</groupId>
+                <artifactId>hutool-bom</artifactId>
+                <version>${hutool.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+            <!-- BouncyCastle -->
+            <dependency>
+                <groupId>org.bouncycastle</groupId>
+                <artifactId>bcprov-jdk15to18</artifactId>
+                <version>${bouncycastle.version}</version>
+            </dependency>
+            <!-- Knife4j -->
+            <dependency>
+                <groupId>com.github.xiaoymin</groupId>
+                <artifactId>knife4j-openapi2-spring-boot-starter</artifactId>
+                <version>${knife4j.version}</version>
+            </dependency>
+            <!-- Caffeine -->
+            <dependency>
+                <groupId>com.github.ben-manes.caffeine</groupId>
+                <artifactId>caffeine</artifactId>
+                <version>${caffeine.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>
