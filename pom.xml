@@ -130,8 +130,8 @@
             <!-- Knife4j -->
             <dependency>
                 <groupId>com.github.xiaoymin</groupId>
-                <artifactId>knife4j-openapi2-spring-boot-starter</artifactId>
-                <version>${knife4j.version}</version>
+                <artifactId>knife4j-openapi3-spring-boot-starter</artifactId>
+                <version>4.3.0</version>
             </dependency>
             <!-- Caffeine -->
             <dependency>

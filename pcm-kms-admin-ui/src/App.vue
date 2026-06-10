@@ -1,56 +1,41 @@
 <template>
-  <main class="app-shell">
-    <section class="panel">
-      <p class="eyebrow">PCM-KMS</p>
-      <h1>Phase 1 Bootstrap Ready</h1>
-      <p class="summary">
-        Backend and frontend skeletons are in place. The next step is implementing
-        key management, client onboarding, and local SQLite flow.
-      </p>
-    </section>
-  </main>
+  <el-container style="min-height: 100vh">
+    <el-aside width="200px" style="background: #304156">
+      <div style="padding: 20px; text-align: center; color: #fff; font-size: 18px; font-weight: bold;">
+        PCM-KMS
+      </div>
+      <el-menu
+        :default-active="$route.path"
+        router
+        background-color="#304156"
+        text-color="#bfcbd9"
+        active-text-color="#409eff"
+      >
+        <el-menu-item index="/dashboard">
+          <el-icon><HomeFilled /></el-icon>
+          <span>首页</span>
+        </el-menu-item>
+        <el-menu-item index="/apps">
+          <el-icon><Monitor /></el-icon>
+          <span>应用管理</span>
+        </el-menu-item>
+        <el-menu-item index="/keys">
+          <el-icon><Key /></el-icon>
+          <span>密钥管理</span>
+        </el-menu-item>
+        <el-menu-item index="/crypto">
+          <el-icon><Lock /></el-icon>
+          <span>加解密测试</span>
+        </el-menu-item>
+      </el-menu>
+    </el-aside>
+    <el-container>
+      <el-header style="background: #fff; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center;">
+        <span style="font-size: 16px; font-weight: 500;">{{ $route.meta.title || 'PCM-KMS' }}</span>
+      </el-header>
+      <el-main>
+        <router-view />
+      </el-main>
+    </el-container>
+  </el-container>
 </template>
-
-<style>
-:root {
-  color: #122117;
-  background: linear-gradient(135deg, #f7f2e8 0%, #d9e7d0 100%);
-  font-family: "Segoe UI", sans-serif;
-}
-
-body {
-  margin: 0;
-}
-
-.app-shell {
-  min-height: 100vh;
-  display: grid;
-  place-items: center;
-  padding: 24px;
-}
-
-.panel {
-  max-width: 720px;
-  padding: 40px;
-  border-radius: 24px;
-  background: rgba(255, 255, 255, 0.82);
-  box-shadow: 0 18px 60px rgba(27, 57, 39, 0.12);
-}
-
-.eyebrow {
-  margin: 0 0 12px;
-  letter-spacing: 0.18em;
-  text-transform: uppercase;
-  font-size: 12px;
-}
-
-h1 {
-  margin: 0 0 12px;
-  font-size: 42px;
-}
-
-.summary {
-  margin: 0;
-  line-height: 1.6;
-}
-</style>
