@@ -1,0 +1,23 @@
+spring:
+  application:
+    name: pcm-kms-server
+  profiles:
+    active: sqlite
+
+server:
+  port: 8080
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+kms:
+  datasource:
+    mode: sqlite
+  cache:
+    type: local
+  security:
+    strict-sign: false
+    request-expire-seconds: 300

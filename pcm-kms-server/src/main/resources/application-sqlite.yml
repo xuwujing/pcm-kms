@@ -1,0 +1,6 @@
+kms:
+  datasource:
+    mode: sqlite
+    url: jdbc:sqlite:./data/pcm-kms.db
+  cache:
+    type: local
