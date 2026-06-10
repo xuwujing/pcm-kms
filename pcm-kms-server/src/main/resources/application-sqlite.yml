@@ -1,3 +1,8 @@
+spring:
+  datasource:
+    url: jdbc:sqlite:./data/pcm-kms.db
+    driver-class-name: org.sqlite.JDBC
+
 kms:
   datasource:
     mode: sqlite

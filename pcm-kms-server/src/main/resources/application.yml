@@ -3,6 +3,8 @@ spring:
     name: pcm-kms-server
   profiles:
     active: sqlite
+  flyway:
+    enabled: false
 
 server:
   port: 8080
@@ -16,6 +18,7 @@ management:
 kms:
   datasource:
     mode: sqlite
+    url: jdbc:sqlite:./data/pcm-kms.db
   cache:
     type: local
   security:
