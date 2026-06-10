@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<project version="4">
+  <component name="CompilerConfiguration">
+    <annotationProcessing>
+      <profile name="Maven default annotation processors profile" enabled="true">
+        <sourceOutputDir name="target/generated-sources/annotations" />
+        <sourceTestOutputDir name="target/generated-test-sources/test-annotations" />
+        <outputRelativeToContentRoot value="true" />
+        <module name="pcm-kms-domain" />
+        <module name="pcm-kms-client-starter" />
+        <module name="pcm-kms-infra" />
+        <module name="pcm-kms-server" />
+        <module name="pcm-kms-common" />
+        <module name="pcm-kms-core" />
+      </profile>
+    </annotationProcessing>
+  </component>
+</project>
