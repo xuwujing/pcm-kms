@@ -1,0 +1,17 @@
+# ============================================================
+# PCM-KMS 压力测试配置
+# ============================================================
+
+server:
+  port: 8082
+
+kms:
+  client:
+    server-url: http://localhost:8080
+    client-id: your-client-id
+    client-secret: your-client-secret
+    client-group: default
+
+logging:
+  level:
+    com.pcm.kms: INFO

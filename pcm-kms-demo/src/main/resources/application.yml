@@ -1,0 +1,26 @@
+# ============================================================
+# PCM-KMS Demo 示例应用配置
+# ============================================================
+# 这个配置文件展示了接入 PCM-KMS 所需的最小配置
+# 请根据实际环境修改 server-url、client-id、client-secret 等参数
+# ============================================================
+
+server:
+  port: 8081  # Demo 应用端口，避免与 KMS 服务端 8080 冲突
+
+# ---------- KMS 客户端配置（核心） ----------
+kms:
+  client:
+    # KMS 服务端地址（必填）
+    server-url: http://localhost:8080
+    # 应用客户端ID（在 KMS 管理后台创建应用并启用后获得）
+    client-id: your-client-id
+    # 应用客户端密钥（在 KMS 管理后台启用应用后获得）
+    client-secret: your-client-secret
+    # 应用组（用于多租户隔离，默认为 default）
+    client-group: default
+
+# ---------- 日志配置（可选） ----------
+logging:
+  level:
+    com.pcm.kms: DEBUG  # 开启 DEBUG 可以看到 SDK 的签名、请求细节

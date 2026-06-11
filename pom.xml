@@ -18,6 +18,8 @@
         <module>pcm-kms-infra</module>
         <module>pcm-kms-client-starter</module>
         <module>pcm-kms-server</module>
+        <module>pcm-kms-demo</module>
+        <module>pcm-kms-stress-test</module>
     </modules>
 
     <properties>
