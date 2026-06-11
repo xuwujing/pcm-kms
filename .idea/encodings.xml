@@ -7,12 +7,16 @@
     <file url="file://$PROJECT_DIR$/pcm-kms-common/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-core/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-core/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/pcm-kms-demo/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/pcm-kms-demo/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-domain/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-domain/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-infra/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-infra/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-server/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/pcm-kms-server/src/main/resources" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/pcm-kms-stress-test/src/main/java" charset="UTF-8" />
+    <file url="file://$PROJECT_DIR$/pcm-kms-stress-test/src/main/resources" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/java" charset="UTF-8" />
     <file url="file://$PROJECT_DIR$/src/main/resources" charset="UTF-8" />
   </component>

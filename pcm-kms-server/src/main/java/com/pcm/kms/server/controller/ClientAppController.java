@@ -1,5 +1,7 @@
 package com.pcm.kms.server.controller;
 
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pcm.kms.common.response.ApiResponse;
 import com.pcm.kms.domain.model.ClientApp;
 import com.pcm.kms.server.dto.CreateClientAppRequest;
@@ -26,9 +28,11 @@ public class ClientAppController {
     }
 
     @GetMapping
-    @Operation(summary = "应用列表")
-    public ApiResponse<List<ClientApp>> list() {
-        return ApiResponse.success(clientAppService.list());
+    @Operation(summary = "应用列表（分页）")
+    public ApiResponse<IPage<ClientApp>> list(
+            @RequestParam(defaultValue = "1") Integer page,
+            @RequestParam(defaultValue = "20") Integer size) {
+        return ApiResponse.success(clientAppService.listPage(page, size));
     }
 
     @GetMapping("/{id}")
@@ -38,8 +42,21 @@ public class ClientAppController {
     }
 
     @PostMapping("/{id}/enable")
-    @Operation(summary = "启用应用（生成接入凭证和默认密钥）")
+    @Operation(summary = "启用应用")
     public ApiResponse<ClientApp> enable(@PathVariable Long id) {
-        return ApiResponse.success(clientAppService.enable(id));
+        return ApiResponse.success(clientAppService.toggleEnable(id, true));
+    }
+
+    @PostMapping("/{id}/disable")
+    @Operation(summary = "停用应用")
+    public ApiResponse<ClientApp> disable(@PathVariable Long id) {
+        return ApiResponse.success(clientAppService.toggleEnable(id, false));
+    }
+
+    @DeleteMapping("/{id}")
+    @Operation(summary = "删除应用")
+    public ApiResponse<Void> delete(@PathVariable Long id) {
+        clientAppService.delete(id);
+        return ApiResponse.success();
     }
 }

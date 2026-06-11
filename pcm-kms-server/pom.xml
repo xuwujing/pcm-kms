@@ -73,6 +73,9 @@
                         <goals>
                             <goal>repackage</goal>
                         </goals>
+                        <configuration>
+                            <finalName>pcm-kms-server</finalName>
+                        </configuration>
                     </execution>
                 </executions>
             </plugin>

@@ -1,6 +1,8 @@
 package com.pcm.kms.server.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pcm.kms.common.enums.AlgorithmEnum;
 import com.pcm.kms.common.enums.KeySourceEnum;
 import com.pcm.kms.common.exception.KmsException;
@@ -45,9 +47,22 @@ public class ClientAppService {
      */
     @Transactional
     public ClientApp create(CreateClientAppRequest request) {
-        log.info("创建应用: name={}, group={}", request.getClientName(), request.getClientGroup());
+        log.info("创建应用: clientId={}, name={}", request.getClientId(), request.getClientName());
+
+        if (request.getClientId() == null || request.getClientId().isEmpty()) {
+            throw new KmsException(400, "服务标识(clientId)不能为空");
+        }
+
+        // 检查 clientId 唯一性
+        Long count = clientAppMapper.selectCount(
+                new LambdaQueryWrapper<ClientApp>().eq(ClientApp::getClientId, request.getClientId())
+        );
+        if (count > 0) {
+            throw new KmsException(400, "服务标识已存在: " + request.getClientId());
+        }
 
         ClientApp app = new ClientApp();
+        app.setClientId(request.getClientId());
         app.setClientName(request.getClientName());
         app.setClientGroup(request.getClientGroup() != null ? request.getClientGroup() : "default");
         app.setContacts(request.getContacts());
@@ -58,8 +73,9 @@ public class ClientAppService {
         app.setUpdatedAt(LocalDateTime.now());
         clientAppMapper.insert(app);
 
-        log.info("应用创建成功: id={}, name={}", app.getId(), app.getClientName());
-        auditLogService.log("app_create", "system", "ClientApp", app.getId().toString(), "success", null);
+        log.info("应用创建成功: id={}, clientId={}, name={}", app.getId(), app.getClientId(), app.getClientName());
+        auditLogService.log("app_create", "system", "ClientApp", app.getId().toString(), "success",
+                "服务标识: " + request.getClientId());
         return app;
     }
 
@@ -90,10 +106,9 @@ public class ClientAppService {
             throw new KmsException(400, "应用已启用");
         }
 
-        // 1. 生成接入凭证
-        app.setClientId(IdUtil.generateClientId());
+        // 1. 生成 clientSecret
         app.setClientSecret(IdUtil.generateClientSecret());
-        log.info("生成接入凭证: clientId={}", app.getClientId());
+        log.info("生成接入凭证: clientId={}, secret=***", app.getClientId());
 
         // 2. 生成签名密钥对
         KeyMaterial signKeyMaterial = cryptoService.generateKeyMaterial(AlgorithmEnum.SIGN);
@@ -103,10 +118,8 @@ public class ClientAppService {
         keyMaterialMapper.insert(signKeyMaterial);
         log.info("生成签名密钥: secretId={}", signKeyMaterial.getSecretId());
 
-        // 保存签名公钥到 ClientApp
         app.setSignPublicKey(signKeyMaterial.getPublicKey());
 
-        // 创建签名密钥元数据
         KeyMetadata signKeyMeta = buildKeyMetadata(app.getClientGroup(), signKeyMaterial.getSecretId(),
                 AlgorithmEnum.SIGN, app.getClientId() + "_sign", "默认签名密钥", "sign");
         keyMetadataMapper.insert(signKeyMeta);
@@ -123,19 +136,68 @@ public class ClientAppService {
                 AlgorithmEnum.AES, app.getClientId() + "_default", "默认对称加密密钥", "encrypt");
         keyMetadataMapper.insert(aesKeyMeta);
 
-        // 4. 授权默认密钥给该客户端
+        // 4. 授权默认密钥
         grantPermission(app.getClientId(), signKeyMaterial.getSecretId());
         grantPermission(app.getClientId(), aesKeyMaterial.getSecretId());
-        log.info("授权默认密钥完成: clientId={}, 签名密钥={}, AES密钥={}",
-                app.getClientId(), signKeyMaterial.getSecretId(), aesKeyMaterial.getSecretId());
 
         app.setEnabled(true);
         app.setUpdatedAt(LocalDateTime.now());
         clientAppMapper.updateById(app);
 
         log.info("应用启用成功: id={}, clientId={}", id, app.getClientId());
-        auditLogService.log("app_enable", "system", "ClientApp", id.toString(), "success", null);
+        auditLogService.log("app_enable", "system", "ClientApp", id.toString(), "success",
+                "clientId: " + app.getClientId());
         return app;
+    }
+
+    /**
+     * 启用/停用应用
+     */
+    @Transactional
+    public ClientApp toggleEnable(Long id, boolean enabled) {
+        log.info("启用/停用应用: id={}, enabled={}", id, enabled);
+        ClientApp app = clientAppMapper.selectById(id);
+        if (app == null) {
+            throw new KmsException(404, "应用不存在");
+        }
+        if (enabled && !app.getEnabled()) {
+            return enable(id); // 首次启用走完整流程
+        }
+        app.setEnabled(enabled);
+        app.setUpdatedAt(LocalDateTime.now());
+        clientAppMapper.updateById(app);
+        auditLogService.log(enabled ? "app_enable" : "app_disable", "system", "ClientApp", id.toString(), "success", null);
+        return app;
+    }
+
+    /**
+     * 删除应用
+     */
+    @Transactional
+    public void delete(Long id) {
+        log.info("删除应用: id={}", id);
+        ClientApp app = clientAppMapper.selectById(id);
+        if (app == null) {
+            throw new KmsException(404, "应用不存在");
+        }
+        clientAppMapper.deleteById(id);
+        // 同时删除授权关系
+        if (app.getClientId() != null) {
+            permissionMapper.delete(
+                    new LambdaQueryWrapper<ClientKeyPermission>().eq(ClientKeyPermission::getClientId, app.getClientId())
+            );
+        }
+        auditLogService.log("app_delete", "system", "ClientApp", id.toString(), "success",
+                "删除应用: " + app.getClientName());
+    }
+
+    /**
+     * 分页查询应用列表
+     */
+    public IPage<ClientApp> listPage(Integer page, Integer size) {
+        log.debug("分页查询应用列表: page={}, size={}", page, size);
+        return clientAppMapper.selectPage(new Page<>(page, size),
+                new LambdaQueryWrapper<ClientApp>().orderByDesc(ClientApp::getId));
     }
 
     /**

@@ -8,8 +8,8 @@ public class CreateKeyRequest {
     private String alias;
     /** 算法：aes/sm4/rsa/sm2/sign/md5/sm3 */
     private String algorithm;
-    /** 应用组 */
-    private String clientGroup;
+    /** 绑定的应用 Client ID（必填） */
+    private String clientId;
     /** 描述 */
     private String description;
 }

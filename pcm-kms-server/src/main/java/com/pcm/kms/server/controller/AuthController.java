@@ -1,11 +1,16 @@
 package com.pcm.kms.server.controller;
 
 import cn.dev33.satoken.stp.StpUtil;
+import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.pcm.kms.common.response.ApiResponse;
+import com.pcm.kms.domain.model.User;
+import com.pcm.kms.infra.mapper.UserMapper;
 import io.swagger.v3.oas.annotations.Operation;
 import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.Data;
+import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
+import org.springframework.util.DigestUtils;
 import org.springframework.web.bind.annotation.*;
 
 import java.util.HashMap;
@@ -13,43 +18,50 @@ import java.util.Map;
 
 /**
  * 认证控制器
- * <p>
- * 提供管理后台的登录/登出/用户信息接口，使用 Sa-Token 管理会话。
  */
 @Slf4j
 @Tag(name = "认证管理")
 @RestController
 @RequestMapping("/api/auth")
+@RequiredArgsConstructor
 public class AuthController {
 
-    /**
-     * 登录
-     * <p>
-     * 校验用户名密码，登录成功后返回 Token。当前版本使用硬编码账号（admin/123456），
-     * 后续版本接入数据库用户表。
-     */
+    private final UserMapper userMapper;
+
     @PostMapping("/login")
     @Operation(summary = "登录")
     public ApiResponse<Map<String, Object>> login(@RequestBody LoginRequest request) {
         log.info("登录请求: username={}", request.getUsername());
 
-        // 当前版本硬编码校验，后续接入 kms_user 表
-        if ("admin".equals(request.getUsername()) && "123456".equals(request.getPassword())) {
-            StpUtil.login(1L);
-            log.info("登录成功: username={}, token={}", request.getUsername(), StpUtil.getTokenValue());
-            Map<String, Object> result = new HashMap<>();
-            result.put("token", StpUtil.getTokenValue());
-            result.put("username", request.getUsername());
-            return ApiResponse.success(result);
+        // 查询数据库用户
+        User user = userMapper.selectOne(
+                new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername())
+        );
+        if (user == null) {
+            log.warn("登录失败: username={}, 原因=用户不存在", request.getUsername());
+            return ApiResponse.error(401, "用户名或密码错误");
+        }
+        if (!user.getEnabled()) {
+            log.warn("登录失败: username={}, 原因=用户已禁用", request.getUsername());
+            return ApiResponse.error(401, "用户已禁用");
         }
 
-        log.warn("登录失败: username={}, 原因=用户名或密码错误", request.getUsername());
-        return ApiResponse.error(401, "用户名或密码错误");
+        String md5Password = DigestUtils.md5DigestAsHex(request.getPassword().getBytes());
+        if (!md5Password.equals(user.getPassword())) {
+            log.warn("登录失败: username={}, 原因=密码错误", request.getUsername());
+            return ApiResponse.error(401, "用户名或密码错误");
+        }
+
+        StpUtil.login(user.getId());
+        log.info("登录成功: username={}, token={}", request.getUsername(), StpUtil.getTokenValue());
+
+        Map<String, Object> result = new HashMap<>();
+        result.put("token", StpUtil.getTokenValue());
+        result.put("username", user.getUsername());
+        result.put("nickname", user.getNickname());
+        return ApiResponse.success(result);
     }
 
-    /**
-     * 登出
-     */
     @PostMapping("/logout")
     @Operation(summary = "登出")
     public ApiResponse<Void> logout() {
@@ -58,9 +70,6 @@ public class AuthController {
         return ApiResponse.success();
     }
 
-    /**
-     * 获取当前用户信息
-     */
     @GetMapping("/info")
     @Operation(summary = "当前用户信息")
     public ApiResponse<Map<String, Object>> info() {
@@ -68,10 +77,14 @@ public class AuthController {
         if (loginId == null) {
             return ApiResponse.error(401, "未登录");
         }
+        User user = userMapper.selectById(Long.valueOf(loginId.toString()));
+        if (user == null) {
+            return ApiResponse.error(401, "用户不存在");
+        }
         Map<String, Object> result = new HashMap<>();
-        result.put("userId", loginId);
-        result.put("username", "admin");
-        result.put("nickname", "管理员");
+        result.put("userId", user.getId());
+        result.put("username", user.getUsername());
+        result.put("nickname", user.getNickname());
         return ApiResponse.success(result);
     }
 

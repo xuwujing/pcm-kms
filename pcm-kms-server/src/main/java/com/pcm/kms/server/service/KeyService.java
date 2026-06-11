@@ -1,12 +1,16 @@
 package com.pcm.kms.server.service;
 
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
+import com.baomidou.mybatisplus.core.metadata.IPage;
+import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pcm.kms.common.enums.AlgorithmEnum;
 import com.pcm.kms.common.enums.KeySourceEnum;
 import com.pcm.kms.common.exception.KmsException;
 import com.pcm.kms.common.util.IdUtil;
 import com.pcm.kms.core.crypto.CryptoService;
 import com.pcm.kms.domain.model.*;
+import com.pcm.kms.infra.mapper.ClientAppMapper;
+import com.pcm.kms.infra.mapper.ClientKeyPermissionMapper;
 import com.pcm.kms.infra.mapper.KeyMaterialMapper;
 import com.pcm.kms.infra.mapper.KeyMetadataMapper;
 import com.pcm.kms.server.dto.CreateKeyRequest;
@@ -31,6 +35,8 @@ public class KeyService {
 
     private final KeyMetadataMapper keyMetadataMapper;
     private final KeyMaterialMapper keyMaterialMapper;
+    private final ClientAppMapper clientAppMapper;
+    private final ClientKeyPermissionMapper permissionMapper;
     private final CryptoService cryptoService;
     private final AuditLogService auditLogService;
 
@@ -46,10 +52,22 @@ public class KeyService {
     @Transactional
     public KeyMetadata create(CreateKeyRequest request) {
         AlgorithmEnum algorithm = AlgorithmEnum.fromCode(request.getAlgorithm());
-        String clientGroup = request.getClientGroup() != null ? request.getClientGroup() : "default";
-        log.info("创建密钥: alias={}, algorithm={}, group={}", request.getAlias(), algorithm.getCode(), clientGroup);
+        String clientId = request.getClientId();
+        if (clientId == null || clientId.isEmpty()) {
+            throw new KmsException(400, "必须指定绑定的应用（clientId）");
+        }
+        log.info("创建密钥: alias={}, algorithm={}, clientId={}", request.getAlias(), algorithm.getCode(), clientId);
 
-        // 检查别名唯一性
+        // 检查应用是否存在
+        ClientApp app = clientAppMapper.selectOne(
+                new LambdaQueryWrapper<ClientApp>().eq(ClientApp::getClientId, clientId)
+        );
+        if (app == null) {
+            throw new KmsException(400, "应用不存在: " + clientId);
+        }
+        String clientGroup = app.getClientGroup();
+
+        // 检查别名唯一性（同应用组内）
         Long count = keyMetadataMapper.selectCount(
                 new LambdaQueryWrapper<KeyMetadata>()
                         .eq(KeyMetadata::getAlias, request.getAlias())
@@ -85,9 +103,25 @@ public class KeyService {
         metadata.setCreator("system");
         keyMetadataMapper.insert(metadata);
 
-        log.info("密钥创建成功: alias={}, secretId={}, version=1", request.getAlias(), material.getSecretId());
-        auditLogService.log("key_create", "system", "KeyMetadata", metadata.getSecretId(), "success", null);
+        // 自动创建授权关系：将密钥授权给指定应用
+        grantPermission(clientId, material.getSecretId());
+
+        log.info("密钥创建成功: alias={}, secretId={}, 绑定应用={}", request.getAlias(), material.getSecretId(), clientId);
+        auditLogService.log("key_create", "system", "KeyMetadata", metadata.getSecretId(), "success",
+                "绑定应用: " + app.getClientName());
         return metadata;
+    }
+
+    /**
+     * 分页查询密钥列表
+     */
+    public IPage<KeyMetadata> listPage(String clientGroup, Integer page, Integer size) {
+        LambdaQueryWrapper<KeyMetadata> wrapper = new LambdaQueryWrapper<>();
+        if (clientGroup != null && !clientGroup.isEmpty()) {
+            wrapper.eq(KeyMetadata::getClientGroup, clientGroup);
+        }
+        wrapper.orderByDesc(KeyMetadata::getCreatedAt);
+        return keyMetadataMapper.selectPage(new Page<>(page, size), wrapper);
     }
 
     /**
@@ -219,6 +253,85 @@ public class KeyService {
                 "从版本 " + old.getKeyVersion() + " 轮转到 " + newMeta.getKeyVersion());
 
         return newMeta;
+    }
+
+    /**
+     * 删除密钥（逻辑删除）
+     */
+    @Transactional
+    public void delete(Long id) {
+        log.info("删除密钥: id={}", id);
+        KeyMetadata metadata = keyMetadataMapper.selectById(id);
+        if (metadata == null) {
+            throw new KmsException(404, "密钥不存在");
+        }
+        keyMetadataMapper.deleteById(id);
+        // 同时删除授权关系
+        permissionMapper.delete(
+                new LambdaQueryWrapper<ClientKeyPermission>().eq(ClientKeyPermission::getSecretId, metadata.getSecretId())
+        );
+        auditLogService.log("key_delete", "system", "KeyMetadata", id.toString(), "success", "删除密钥: " + metadata.getAlias());
+    }
+
+    /**
+     * 查询指定应用可访问的密钥列表
+     */
+    public List<KeyMetadata> listByClientId(String clientId) {
+        List<ClientKeyPermission> perms = permissionMapper.selectList(
+                new LambdaQueryWrapper<ClientKeyPermission>().eq(ClientKeyPermission::getClientId, clientId)
+        );
+        if (perms.isEmpty()) {
+            return java.util.Collections.emptyList();
+        }
+        List<String> secretIds = perms.stream().map(ClientKeyPermission::getSecretId).collect(java.util.stream.Collectors.toList());
+        return keyMetadataMapper.selectList(
+                new LambdaQueryWrapper<KeyMetadata>()
+                        .in(KeyMetadata::getSecretId, secretIds)
+                        .orderByDesc(KeyMetadata::getCreatedAt)
+        );
+    }
+
+    /**
+     * 授权密钥给应用
+     */
+    @Transactional
+    public void grantPermission(String clientId, String secretId) {
+        // 检查是否已存在
+        Long count = permissionMapper.selectCount(
+                new LambdaQueryWrapper<ClientKeyPermission>()
+                        .eq(ClientKeyPermission::getClientId, clientId)
+                        .eq(ClientKeyPermission::getSecretId, secretId)
+        );
+        if (count > 0) {
+            return; // 已存在，跳过
+        }
+        ClientKeyPermission perm = new ClientKeyPermission();
+        perm.setClientId(clientId);
+        perm.setSecretId(secretId);
+        perm.setEnabled(true);
+        perm.setCreatedAt(LocalDateTime.now());
+        permissionMapper.insert(perm);
+        auditLogService.log("auth_grant", "system", "ClientKeyPermission", clientId, "success", "授权密钥: " + secretId);
+    }
+
+    /**
+     * 撤销授权
+     */
+    @Transactional
+    public void revokePermission(Long permissionId) {
+        permissionMapper.deleteById(permissionId);
+        auditLogService.log("auth_revoke", "system", "ClientKeyPermission", permissionId.toString(), "success", null);
+    }
+
+    /**
+     * 查询密钥的授权列表
+     */
+    public List<ClientKeyPermission> listPermissions(String secretId) {
+        return permissionMapper.selectList(
+                new LambdaQueryWrapper<ClientKeyPermission>()
+                        .eq(secretId != null, ClientKeyPermission::getSecretId, secretId)
+                        .orderByDesc(ClientKeyPermission::getId)
+        );
     }
 
     /**
