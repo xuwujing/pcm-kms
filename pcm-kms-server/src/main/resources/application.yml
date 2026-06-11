@@ -5,7 +5,6 @@ spring:
     active: sqlite
   flyway:
     enabled: true
-    locations: classpath:db/migration/{vendor}
     baseline-on-migrate: true
 
 server:
@@ -26,19 +25,28 @@ management:
       exposure:
         include: health,info
 
+# KMS 业务配置
 kms:
-  datasource:
-    mode: sqlite
-  cache:
-    type: local
   security:
     strict-sign: false
     request-expire-seconds: 300
+  ratelimit:
+    enabled: true
+    max-per-minute: 60
 
 knife4j:
   enable: true
   setting:
     language: zh_cn
+
+# Sa-Token 配置
+sa-token:
+  token-name: satoken
+  timeout: 2592000
+  active-timeout: -1
+  is-concurrent: true
+  is-share: true
+  token-style: uuid
 
 logging:
   level:

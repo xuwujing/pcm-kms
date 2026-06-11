@@ -10,12 +10,20 @@ import com.pcm.kms.domain.model.*;
 import com.pcm.kms.infra.mapper.*;
 import com.pcm.kms.server.dto.CreateClientAppRequest;
 import lombok.RequiredArgsConstructor;
+import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
 import java.time.LocalDateTime;
 import java.util.List;
 
+/**
+ * 客户端应用管理服务
+ * <p>
+ * 负责应用的创建、启用、查询。启用时自动生成接入凭证（clientId/clientSecret）
+ * 和默认密钥（签名密钥 + AES 对称密钥），并自动授权。
+ */
+@Slf4j
 @Service
 @RequiredArgsConstructor
 public class ClientAppService {
@@ -29,9 +37,16 @@ public class ClientAppService {
 
     /**
      * 创建应用（未启用状态）
+     * <p>
+     * 仅登记应用信息，不生成接入凭证。需调用 {@link #enable(Long)} 启用后才能使用。
+     *
+     * @param request 创建请求（名称、应用组、联系人等）
+     * @return 创建后的应用对象
      */
     @Transactional
     public ClientApp create(CreateClientAppRequest request) {
+        log.info("创建应用: name={}, group={}", request.getClientName(), request.getClientGroup());
+
         ClientApp app = new ClientApp();
         app.setClientName(request.getClientName());
         app.setClientGroup(request.getClientGroup() != null ? request.getClientGroup() : "default");
@@ -42,112 +57,127 @@ public class ClientAppService {
         app.setCreatedAt(LocalDateTime.now());
         app.setUpdatedAt(LocalDateTime.now());
         clientAppMapper.insert(app);
+
+        log.info("应用创建成功: id={}, name={}", app.getId(), app.getClientName());
         auditLogService.log("app_create", "system", "ClientApp", app.getId().toString(), "success", null);
         return app;
     }
 
     /**
-     * 启用应用：生成 clientId/clientSecret/默认签名密钥
+     * 启用应用
+     * <p>
+     * 执行以下操作：
+     * 1. 生成 clientId / clientSecret 接入凭证
+     * 2. 生成 RSA 签名密钥对（用于请求签名验签）
+     * 3. 生成 AES 默认对称加密密钥
+     * 4. 自动授权这两个密钥给该客户端
+     *
+     * @param id 应用ID
+     * @return 启用后的应用对象（含 clientId/clientSecret）
+     * @throws KmsException 应用不存在或已启用时抛出
      */
     @Transactional
     public ClientApp enable(Long id) {
+        log.info("启用应用: id={}", id);
+
         ClientApp app = clientAppMapper.selectById(id);
         if (app == null) {
+            log.warn("启用应用失败: 应用不存在, id={}", id);
             throw new KmsException(404, "应用不存在");
         }
         if (app.getEnabled()) {
+            log.warn("启用应用失败: 应用已启用, id={}", id);
             throw new KmsException(400, "应用已启用");
         }
 
-        // 生成接入凭证
+        // 1. 生成接入凭证
         app.setClientId(IdUtil.generateClientId());
         app.setClientSecret(IdUtil.generateClientSecret());
+        log.info("生成接入凭证: clientId={}", app.getClientId());
 
-        // 生成默认签名密钥对
+        // 2. 生成签名密钥对
         KeyMaterial signKeyMaterial = cryptoService.generateKeyMaterial(AlgorithmEnum.SIGN);
         signKeyMaterial.setSecretId(IdUtil.generateSecretId());
         signKeyMaterial.setCreatedAt(LocalDateTime.now());
         signKeyMaterial.setUpdatedAt(LocalDateTime.now());
         keyMaterialMapper.insert(signKeyMaterial);
+        log.info("生成签名密钥: secretId={}", signKeyMaterial.getSecretId());
 
         // 保存签名公钥到 ClientApp
         app.setSignPublicKey(signKeyMaterial.getPublicKey());
 
         // 创建签名密钥元数据
-        KeyMetadata signKeyMeta = new KeyMetadata();
-        signKeyMeta.setClientGroup(app.getClientGroup());
-        signKeyMeta.setSecretId(signKeyMaterial.getSecretId());
-        signKeyMeta.setEnabled(true);
-        signKeyMeta.setAlgorithm(AlgorithmEnum.SIGN.getCode());
-        signKeyMeta.setCryptoType(AlgorithmEnum.SIGN.getCryptoType().getCode());
-        signKeyMeta.setKeyPurpose("sign");
-        signKeyMeta.setAlias(app.getClientId() + "_sign");
-        signKeyMeta.setDescription("默认签名密钥");
-        signKeyMeta.setKeySource(KeySourceEnum.SYSTEM.getCode());
-        signKeyMeta.setKeyVersion(1);
-        signKeyMeta.setCreatedAt(LocalDateTime.now());
-        signKeyMeta.setUpdatedAt(LocalDateTime.now());
-        signKeyMeta.setCreator("system");
+        KeyMetadata signKeyMeta = buildKeyMetadata(app.getClientGroup(), signKeyMaterial.getSecretId(),
+                AlgorithmEnum.SIGN, app.getClientId() + "_sign", "默认签名密钥", "sign");
         keyMetadataMapper.insert(signKeyMeta);
 
-        // 生成默认 AES 密钥
+        // 3. 生成默认 AES 密钥
         KeyMaterial aesKeyMaterial = cryptoService.generateKeyMaterial(AlgorithmEnum.AES);
         aesKeyMaterial.setSecretId(IdUtil.generateSecretId());
         aesKeyMaterial.setCreatedAt(LocalDateTime.now());
         aesKeyMaterial.setUpdatedAt(LocalDateTime.now());
         keyMaterialMapper.insert(aesKeyMaterial);
+        log.info("生成默认AES密钥: secretId={}", aesKeyMaterial.getSecretId());
 
-        KeyMetadata aesKeyMeta = new KeyMetadata();
-        aesKeyMeta.setClientGroup(app.getClientGroup());
-        aesKeyMeta.setSecretId(aesKeyMaterial.getSecretId());
-        aesKeyMeta.setEnabled(true);
-        aesKeyMeta.setAlgorithm(AlgorithmEnum.AES.getCode());
-        aesKeyMeta.setCryptoType(AlgorithmEnum.AES.getCryptoType().getCode());
-        aesKeyMeta.setKeyPurpose("encrypt");
-        aesKeyMeta.setAlias(app.getClientId() + "_default");
-        aesKeyMeta.setDescription("默认对称加密密钥");
-        aesKeyMeta.setKeySource(KeySourceEnum.SYSTEM.getCode());
-        aesKeyMeta.setKeyVersion(1);
-        aesKeyMeta.setCreatedAt(LocalDateTime.now());
-        aesKeyMeta.setUpdatedAt(LocalDateTime.now());
-        aesKeyMeta.setCreator("system");
+        KeyMetadata aesKeyMeta = buildKeyMetadata(app.getClientGroup(), aesKeyMaterial.getSecretId(),
+                AlgorithmEnum.AES, app.getClientId() + "_default", "默认对称加密密钥", "encrypt");
         keyMetadataMapper.insert(aesKeyMeta);
 
-        // 授权默认密钥给该客户端
+        // 4. 授权默认密钥给该客户端
         grantPermission(app.getClientId(), signKeyMaterial.getSecretId());
         grantPermission(app.getClientId(), aesKeyMaterial.getSecretId());
+        log.info("授权默认密钥完成: clientId={}, 签名密钥={}, AES密钥={}",
+                app.getClientId(), signKeyMaterial.getSecretId(), aesKeyMaterial.getSecretId());
 
         app.setEnabled(true);
         app.setUpdatedAt(LocalDateTime.now());
         clientAppMapper.updateById(app);
 
+        log.info("应用启用成功: id={}, clientId={}", id, app.getClientId());
         auditLogService.log("app_enable", "system", "ClientApp", id.toString(), "success", null);
         return app;
     }
 
     /**
-     * 列表查询
+     * 查询所有应用列表
+     *
+     * @return 应用列表
      */
     public List<ClientApp> list() {
+        log.debug("查询应用列表");
         return clientAppMapper.selectList(null);
     }
 
     /**
-     * 根据 ID 查询
+     * 根据 ID 查询应用
+     *
+     * @param id 应用ID
+     * @return 应用对象，不存在返回 null
      */
     public ClientApp getById(Long id) {
+        log.debug("查询应用详情: id={}", id);
         return clientAppMapper.selectById(id);
     }
 
     /**
-     * 根据 clientId 查询
+     * 根据 clientId 查询应用
+     *
+     * @param clientId 客户端唯一标识
+     * @return 应用对象，不存在返回 null
      */
     public ClientApp getByClientId(String clientId) {
+        log.debug("根据clientId查询应用: clientId={}", clientId);
         return clientAppMapper.selectOne(
                 new LambdaQueryWrapper<ClientApp>().eq(ClientApp::getClientId, clientId)
         );
     }
 
+    /**
+     * 授予客户端访问密钥的权限
+     *
+     * @param clientId 客户端ID
+     * @param secretId 密钥ID
+     */
     private void grantPermission(String clientId, String secretId) {
         ClientKeyPermission perm = new ClientKeyPermission();
         perm.setClientId(clientId);
@@ -155,5 +185,29 @@ public class ClientAppService {
         perm.setEnabled(true);
         perm.setCreatedAt(LocalDateTime.now());
         permissionMapper.insert(perm);
+        log.debug("授权: clientId={} -> secretId={}", clientId, secretId);
+    }
+
+    /**
+     * 构建密钥元数据对象
+     */
+    private KeyMetadata buildKeyMetadata(String clientGroup, String secretId,
+                                          AlgorithmEnum algorithm, String alias,
+                                          String description, String keyPurpose) {
+        KeyMetadata meta = new KeyMetadata();
+        meta.setClientGroup(clientGroup);
+        meta.setSecretId(secretId);
+        meta.setEnabled(true);
+        meta.setAlgorithm(algorithm.getCode());
+        meta.setCryptoType(algorithm.getCryptoType().getCode());
+        meta.setKeyPurpose(keyPurpose);
+        meta.setAlias(alias);
+        meta.setDescription(description);
+        meta.setKeySource(KeySourceEnum.SYSTEM.getCode());
+        meta.setKeyVersion(1);
+        meta.setCreatedAt(LocalDateTime.now());
+        meta.setUpdatedAt(LocalDateTime.now());
+        meta.setCreator("system");
+        return meta;
     }
 }

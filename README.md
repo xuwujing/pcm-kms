@@ -1,181 +1,168 @@
-# PCM-KMS
+# PCM-KMS 密钥管理系统
 
-A clean, lightweight Key Management System built with Spring Boot 2.7, Spring Cloud 2021, Vue 3, MySQL/SQLite, and optional Redis.
+> 纯净、轻量、开箱即用的密钥管理系统
 
-## Goals
+## 简介
 
-PCM-KMS is intentionally optimized for these three goals first:
+PCM-KMS 是一个密钥管理系统，用于统一管理应用系统的加密密钥、提供加解密服务、控制密钥访问权限。
 
-- A KMS that can run locally with minimal setup
-- A KMS that business services can integrate with easily
-- A KMS that still feels maintainable six months later
+**核心特性：**
 
-This means:
+- 🔐 多算法支持：AES、SM4、RSA、SM2、MD5、SM3、签名验签
+- 📦 双数据库模式：MySQL（生产）+ SQLite（开发/单机），自动切换
+- 💾 缓存降级：Redis 优先，不可用时自动降级为 Caffeine 本地缓存
+- 🔑 多租户隔离：按应用组（clientGroup）隔离密钥，客户端签名鉴权
+- 🛡️ 安全防护：密钥加密存储、传输签名、限流控制、审计日志
+- 🎨 管理后台：Vue 3 + Element Plus，开箱即用
+- 🚀 一键启动：SQLite 模式零依赖，`java -jar` 即可运行
+- 🐳 Docker 支持：docker-compose 一键部署
 
-- single-service first, not microservices-first
-- standard open source stack, not internal platform dependencies
-- explicit boundaries, not framework-heavy coupling
-- Redis optional, SQLite supported, local run is a first-class path
+## 技术栈
 
-## Why This Project Exists
+### 后端
 
-The previous KMS implementation already covered many useful capabilities, but it also became heavier over time:
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Spring Boot | 2.7.x | 应用框架 |
+| Spring Cloud | 2021.0.x | 微服务（预留扩展位） |
+| MyBatis-Plus | 3.5.x | ORM |
+| Sa-Token | 1.37 | 轻量 RBAC 权限认证 |
+| BouncyCastle | 1.79 | 国密算法（SM2/SM3/SM4） |
+| Knife4j | 4.3 | OpenAPI 3 接口文档 |
 
-- too coupled to internal frameworks and infrastructure
-- too many deployment assumptions
-- too much framework-driven complexity for a personal long-term project
+### 前端
 
-PCM-KMS is the rewrite direction: keep the valuable KMS product ideas, remove the unnecessary engineering weight.
+| 技术 | 版本 | 说明 |
+|------|------|------|
+| Vue 3 | 3.x | 前端框架 |
+| Element Plus | 2.x | UI 组件库 |
+| Vite | 5.x | 构建工具 |
+| Pinia | 2.x | 状态管理 |
 
-## Scope
+## 快速开始
 
-### What v1 should do well
+### 环境要求
 
-- key lifecycle management
-- alias-based crypto access
-- client registration and authorization
-- automatic request signing and verification
-- audit logging
-- lightweight management UI
-- starter-based service integration
+- JDK 8+
+- Maven 3.6+
+- Node.js 18+（前端）
 
-### What v1 should not overdo
+### SQLite 模式（零依赖，推荐先体验）
 
-- mandatory service registry
-- mandatory gateway
-- heavy distributed deployment model
-- hardware security module support
-- complex platform dependencies
+```bash
+# 编译
+git clone https://github.com/your-org/pcm-kms.git
+cd pcm-kms
+mvn clean package -DskipTests
 
-## Architecture At A Glance
+# 启动后端
+cd pcm-kms-server
+java -jar target/pcm-kms-server.jar --spring.profiles.active=sqlite
 
-```mermaid
-flowchart LR
-    UI["Admin UI<br/>Vue 3 + Vite"] --> API["PCM-KMS Server<br/>Spring Boot 2.7"]
-    APP["Business Service"] --> SDK["pcm-kms-client-starter"]
-    SDK --> API
-    API --> DB["MySQL / SQLite"]
-    API --> CACHE["Redis / Local Cache"]
+# 启动前端
+cd ../pcm-kms-admin-ui
+npm install
+npm run dev
 ```
 
-Design position:
+- 后端：http://localhost:8080
+- 前端：http://localhost:5173
+- 接口文档：http://localhost:8080/doc.html
+- 默认管理员：`admin` / `123456`
 
-- local-first
-- single deployment first
-- extensible later
-- secure by default
+### Docker 部署
 
-## Planned Repository Layout
+```bash
+docker-compose up -d
+```
 
-```text
+## 项目结构
+
+```
 pcm-kms/
-├── docs/
-├── sql/
-├── pcm-kms-common/
-├── pcm-kms-domain/
-├── pcm-kms-core/
-├── pcm-kms-infra/
-├── pcm-kms-server/
-├── pcm-kms-client-starter/
-└── pcm-kms-admin-ui/
+├── pcm-kms-common/          # 公共模块：枚举、异常、工具类
+├── pcm-kms-domain/          # 领域模型：实体、DTO
+├── pcm-kms-core/            # 核心业务：加密算法引擎
+├── pcm-kms-infra/           # 基础设施：MyBatis-Plus、缓存、Flyway
+├── pcm-kms-server/          # 主服务：Controller、Service、启动入口
+├── pcm-kms-client-starter/  # 客户端 SDK：编程式加解密
+├── pcm-kms-admin-ui/        # 前端管理后台
+├── sql/                     # 数据库脚本（MySQL + SQLite）
+├── docker/                  # Docker 部署文件
+├── docs/                    # 设计文档
+│   ├── 01-总体设计方案.md
+│   ├── 02-开发进度周期说明.md
+│   ├── 03-快速接入文档.md
+│   ├── 04-框架说明与启动指南.md
+│   ├── 05-多智能体协作开发说明.md
+│   ├── 06-协作记录模板.md
+│   └── 07-开发记录.md
+└── pom.xml
 ```
 
-## Tech Stack
+## 核心 API
 
-### Backend
+| 接口 | 方法 | 说明 |
+|------|------|------|
+| `/api/admin/apps` | POST | 创建应用 |
+| `/api/admin/apps/{id}/enable` | POST | 启用应用（生成凭证和默认密钥） |
+| `/api/admin/keys` | POST | 创建密钥 |
+| `/api/admin/keys/{id}/rotate` | POST | 密钥轮转 |
+| `/api/crypto/encrypt` | POST | 加密 |
+| `/api/crypto/decrypt` | POST | 解密 |
+| `/api/crypto/sign` | POST | 签名 |
+| `/api/crypto/verify` | POST | 验签 |
+| `/api/crypto/digest` | POST | 摘要 |
+| `/api/crypto/public-key/{alias}` | GET | 获取公钥 |
+| `/api/auth/login` | POST | 登录 |
 
-- Spring Boot 2.7.x
-- Spring Cloud 2021.0.x
-- MyBatis-Plus 3.5.x
-- Flyway
-- Sa-Token
-- BouncyCastle
-- Caffeine
-- Redis optional
-- MySQL / SQLite
+## Java SDK 接入
 
-### Frontend
+```xml
+<dependency>
+    <groupId>com.pcm.kms</groupId>
+    <artifactId>pcm-kms-client-starter</artifactId>
+    <version>0.2.0-SNAPSHOT</version>
+</dependency>
+```
 
-- Vue 3
-- Vite
-- Pinia
-- Vue Router
-- Element Plus
-- Axios
+```yaml
+kms:
+  client:
+    server-url: http://localhost:8080
+    client-id: your-client-id
+    client-secret: your-client-secret
+    client-group: default
+```
 
-## Run Modes
+```java
+@Autowired
+private KmsClient kmsClient;
 
-### Minimal local mode
+// 加密
+CryptoResult encrypted = kmsClient.encrypt("敏感数据", "my-alias");
 
-Recommended for first run and daily development:
+// 解密
+CryptoResult decrypted = kmsClient.decrypt(encrypted.getCipherText(), "my-alias");
+```
 
-- SQLite
-- local cache
-- single backend process
-- no Redis required
+## 配置说明
 
-### Standard dev mode
+| 配置项 | 默认值 | 说明 |
+|--------|--------|------|
+| `kms.security.strict-sign` | false | 是否强制客户端签名验证 |
+| `kms.security.request-expire-seconds` | 300 | 请求有效期（秒） |
+| `kms.ratelimit.enabled` | true | 是否启用限流 |
+| `kms.ratelimit.max-per-minute` | 60 | 每分钟最大请求数 |
+| `spring.profiles.active` | sqlite | 数据库模式：sqlite / mysql |
 
-Recommended for team debugging:
+## 版本
 
-- MySQL
-- Redis
-- strict signing enabled
+| 版本 | 说明 |
+|------|------|
+| v0.1.0 | 项目骨架 + 基础框架 |
+| v0.2.0 | 密钥管理 + 加解密 + 前端 + SDK + 限流 + Docker |
 
-## Documentation
+## 开源协议
 
-| File | Purpose |
-| --- | --- |
-| [docs/01-总体设计方案.md](D:/pcm/MyProject/pcm-kms/docs/01-%E6%80%BB%E4%BD%93%E8%AE%BE%E8%AE%A1%E6%96%B9%E6%A1%88.md) | overall architecture, domain boundaries, security model |
-| [docs/02-开发进度周期说明.md](D:/pcm/MyProject/pcm-kms/docs/02-%E5%BC%80%E5%8F%91%E8%BF%9B%E5%BA%A6%E5%91%A8%E6%9C%9F%E8%AF%B4%E6%98%8E.md) | phased roadmap and milestones |
-| [docs/03-快速接入文档.md](D:/pcm/MyProject/pcm-kms/docs/03-%E5%BF%AB%E9%80%9F%E6%8E%A5%E5%85%A5%E6%96%87%E6%A1%A3.md) | fast onboarding and integration guide |
-| [docs/04-框架说明与启动指南.md](D:/pcm/MyProject/pcm-kms/docs/04-%E6%A1%86%E6%9E%B6%E8%AF%B4%E6%98%8E%E4%B8%8E%E5%90%AF%E5%8A%A8%E6%8C%87%E5%8D%97.md) | framework choices and startup guidance |
-| [docs/05-多智能体协作开发说明.md](D:/pcm/MyProject/pcm-kms/docs/05-%E5%A4%9A%E6%99%BA%E8%83%BD%E4%BD%93%E5%8D%8F%E4%BD%9C%E5%BC%80%E5%8F%91%E8%AF%B4%E6%98%8E.md) | multi-agent collaboration, handoff, work log rules |
-| [docs/06-协作记录模板.md](D:/pcm/MyProject/pcm-kms/docs/06-%E5%8D%8F%E4%BD%9C%E8%AE%B0%E5%BD%95%E6%A8%A1%E6%9D%BF.md) | handoff log template for parallel contributors |
-
-## Principles
-
-- Use aliases as the main business-facing key identifier
-- Generate key material when an application is enabled, not only when it is created
-- Keep private keys and symmetric key material non-readable from ordinary interfaces
-- Prefer automatic signing and verification in the starter
-- Prefer explicit API access first, annotation-based enhancement second
-- Keep logs auditable without leaking plaintext
-
-## Roadmap
-
-### Phase 1
-
-- bootstrappable backend
-- bootstrappable frontend
-- MySQL / SQLite switching
-- Redis / local cache switching
-
-### Phase 2
-
-- key lifecycle
-- crypto APIs
-- client auth
-- audit logging
-
-### Phase 3
-
-- starter integration
-- management UI
-- smoother onboarding
-
-### Phase 4
-
-- rate limits
-- replay protection
-- metrics
-- Docker
-
-## Current Note
-
-This repository currently focuses on design and planning documents first.  
-The next implementation step should follow the phased plan rather than trying to build everything at once.
-
-## License
-
-MIT
+MIT License

@@ -1,0 +1,27 @@
+version: '3.8'
+services:
+  # KMS 后端服务（SQLite 模式，零依赖）
+  kms-server:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_PROFILES_ACTIVE=sqlite
+      - KMS_SECURITY_STRICT_SIGN=false
+    volumes:
+      - kms-data:/data
+
+  # KMS 前端管理后台
+  kms-ui:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile.ui
+    ports:
+      - "80:80"
+    depends_on:
+      - kms-server
+
+volumes:
+  kms-data:
