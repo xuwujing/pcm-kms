@@ -1,7 +1,11 @@
 spring:
   datasource:
-    url: jdbc:sqlite:${kms.sqlite.data-path:./data}/pcm-kms.db
+    url: jdbc:sqlite:${kms.sqlite.data-path:./data}/pcm-kms.db?busy_timeout=5000&journal_mode=WAL&synchronous=NORMAL
     driver-class-name: org.sqlite.JDBC
+    hikari:
+      maximum-pool-size: 1
+      minimum-idle: 1
+      connection-timeout: 30000
   flyway:
     enabled: false
 

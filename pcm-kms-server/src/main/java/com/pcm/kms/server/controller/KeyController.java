@@ -1,7 +1,7 @@
 package com.pcm.kms.server.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pcm.kms.common.response.ApiResponse;
 import com.pcm.kms.domain.model.ClientKeyPermission;
 import com.pcm.kms.domain.model.KeyMetadata;
@@ -15,6 +15,7 @@ import org.springframework.web.bind.annotation.*;
 import java.util.List;
 import java.util.Map;
 
+@SaCheckLogin
 @Tag(name = "密钥管理")
 @RestController
 @RequestMapping("/api/admin/keys")
@@ -24,13 +25,13 @@ public class KeyController {
     private final KeyService keyService;
 
     @PostMapping
-    @Operation(summary = "创建密钥（绑定到应用）")
+    @Operation(summary = "创建密钥")
     public ApiResponse<KeyMetadata> create(@RequestBody CreateKeyRequest request) {
         return ApiResponse.success(keyService.create(request));
     }
 
     @GetMapping
-    @Operation(summary = "密钥列表（分页）")
+    @Operation(summary = "密钥列表")
     public ApiResponse<IPage<KeyMetadata>> list(
             @RequestParam(required = false) String clientGroup,
             @RequestParam(defaultValue = "1") Integer page,
@@ -51,13 +52,13 @@ public class KeyController {
     }
 
     @PostMapping("/{id}/disable")
-    @Operation(summary = "禁用密钥")
+    @Operation(summary = "停用密钥")
     public ApiResponse<KeyMetadata> disable(@PathVariable Long id) {
         return ApiResponse.success(keyService.toggleEnable(id, false));
     }
 
     @PostMapping("/{id}/rotate")
-    @Operation(summary = "密钥轮转")
+    @Operation(summary = "轮转密钥")
     public ApiResponse<KeyMetadata> rotate(@PathVariable Long id) {
         return ApiResponse.success(keyService.rotate(id));
     }
@@ -69,10 +70,8 @@ public class KeyController {
         return ApiResponse.success();
     }
 
-    // ==================== 授权关系管理 ====================
-
     @GetMapping("/{id}/permissions")
-    @Operation(summary = "查询密钥的授权列表")
+    @Operation(summary = "查询密钥授权")
     public ApiResponse<List<ClientKeyPermission>> listPermissions(@PathVariable Long id) {
         KeyMetadata key = keyService.getById(id);
         if (key == null) {
@@ -82,19 +81,18 @@ public class KeyController {
     }
 
     @PostMapping("/{id}/grant")
-    @Operation(summary = "授权密钥给应用")
+    @Operation(summary = "授权应用访问密钥")
     public ApiResponse<Void> grantPermission(@PathVariable Long id, @RequestBody Map<String, String> body) {
         KeyMetadata key = keyService.getById(id);
         if (key == null) {
             return ApiResponse.error(404, "密钥不存在");
         }
-        String clientId = body.get("clientId");
-        keyService.grantPermission(clientId, key.getSecretId());
+        keyService.grantPermission(body.get("clientId"), key.getSecretId());
         return ApiResponse.success();
     }
 
     @DeleteMapping("/permission/{permissionId}")
-    @Operation(summary = "撤销授权")
+    @Operation(summary = "撤销密钥授权")
     public ApiResponse<Void> revokePermission(@PathVariable Long permissionId) {
         keyService.revokePermission(permissionId);
         return ApiResponse.success();

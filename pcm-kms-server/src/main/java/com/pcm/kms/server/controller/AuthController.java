@@ -1,5 +1,6 @@
 package com.pcm.kms.server.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import cn.dev33.satoken.stp.StpUtil;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.pcm.kms.common.response.ApiResponse;
@@ -16,9 +17,6 @@ import org.springframework.web.bind.annotation.*;
 import java.util.HashMap;
 import java.util.Map;
 
-/**
- * 认证控制器
- */
 @Slf4j
 @Tag(name = "认证管理")
 @RestController
@@ -31,30 +29,19 @@ public class AuthController {
     @PostMapping("/login")
     @Operation(summary = "登录")
     public ApiResponse<Map<String, Object>> login(@RequestBody LoginRequest request) {
-        log.info("登录请求: username={}", request.getUsername());
-
-        // 查询数据库用户
         User user = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername())
         );
-        if (user == null) {
-            log.warn("登录失败: username={}, 原因=用户不存在", request.getUsername());
+        if (user == null || !user.getEnabled()) {
             return ApiResponse.error(401, "用户名或密码错误");
-        }
-        if (!user.getEnabled()) {
-            log.warn("登录失败: username={}, 原因=用户已禁用", request.getUsername());
-            return ApiResponse.error(401, "用户已禁用");
         }
 
         String md5Password = DigestUtils.md5DigestAsHex(request.getPassword().getBytes());
         if (!md5Password.equals(user.getPassword())) {
-            log.warn("登录失败: username={}, 原因=密码错误", request.getUsername());
             return ApiResponse.error(401, "用户名或密码错误");
         }
 
         StpUtil.login(user.getId());
-        log.info("登录成功: username={}, token={}", request.getUsername(), StpUtil.getTokenValue());
-
         Map<String, Object> result = new HashMap<>();
         result.put("token", StpUtil.getTokenValue());
         result.put("username", user.getUsername());
@@ -62,14 +49,15 @@ public class AuthController {
         return ApiResponse.success(result);
     }
 
+    @SaCheckLogin
     @PostMapping("/logout")
     @Operation(summary = "登出")
     public ApiResponse<Void> logout() {
-        log.info("登出请求: userId={}", StpUtil.getLoginIdDefaultNull());
         StpUtil.logout();
         return ApiResponse.success();
     }
 
+    @SaCheckLogin
     @GetMapping("/info")
     @Operation(summary = "当前用户信息")
     public ApiResponse<Map<String, Object>> info() {

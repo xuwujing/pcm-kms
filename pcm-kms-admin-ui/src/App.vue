@@ -1,22 +1,18 @@
 <template>
-  <!-- 登录页单独渲染 -->
-  <router-view v-if="$route.path === '/login'" />
-  <!-- 其他页面带侧边栏 -->
-  <el-container v-else style="min-height: 100vh">
-    <el-aside width="200px" style="background: #304156">
-      <div style="padding: 20px; text-align: center; color: #fff; font-size: 18px; font-weight: bold;">
-        PCM-KMS
-      </div>
+  <router-view v-if="isLoginPage" />
+  <el-container v-else class="layout">
+    <el-aside width="220px" class="sidebar">
+      <div class="brand">PCM-KMS</div>
       <el-menu
         :default-active="$route.path"
         router
-        background-color="#304156"
-        text-color="#bfcbd9"
-        active-text-color="#409eff"
+        background-color="#1f2937"
+        text-color="#cbd5e1"
+        active-text-color="#ffffff"
       >
         <el-menu-item index="/dashboard">
           <el-icon><HomeFilled /></el-icon>
-          <span>首页</span>
+          <span>仪表盘</span>
         </el-menu-item>
         <el-menu-item index="/apps">
           <el-icon><Monitor /></el-icon>
@@ -45,14 +41,14 @@
       </el-menu>
     </el-aside>
     <el-container>
-      <el-header style="background: #fff; border-bottom: 1px solid #e6e6e6; display: flex; align-items: center; justify-content: space-between;">
-        <span style="font-size: 16px; font-weight: 500;">{{ $route.meta.title || 'PCM-KMS' }}</span>
-        <div style="display: flex; align-items: center; gap: 12px;">
-          <span style="font-size: 13px; color: #666;">{{ username }}</span>
-          <el-button type="text" size="small" @click="handleLogout">退出登录</el-button>
+      <el-header class="header">
+        <span class="page-title">{{ $route.meta.title || 'PCM-KMS' }}</span>
+        <div class="header-actions">
+          <span class="username">{{ username }}</span>
+          <el-button link type="primary" @click="handleLogout">退出登录</el-button>
         </div>
       </el-header>
-      <el-main>
+      <el-main class="main">
         <router-view />
       </el-main>
     </el-container>
@@ -61,16 +57,19 @@
 
 <script setup>
 import { computed } from 'vue'
-import { useRouter } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 
+const route = useRoute()
 const router = useRouter()
+
+const isLoginPage = computed(() => route.path === '/login')
 
 const username = computed(() => {
   try {
-    const user = JSON.parse(localStorage.getItem('kms_user') || '{}')
-    return user.username || ''
+    const raw = localStorage.getItem('kms_user')
+    return raw ? JSON.parse(raw).username || 'admin' : 'admin'
   } catch {
-    return ''
+    return 'admin'
   }
 })
 
@@ -80,3 +79,50 @@ const handleLogout = () => {
   router.push('/login')
 }
 </script>
+
+<style scoped>
+.layout {
+  min-height: 100vh;
+}
+
+.sidebar {
+  background: #1f2937;
+}
+
+.brand {
+  padding: 20px 16px;
+  color: #fff;
+  font-size: 20px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border-bottom: 1px solid #e5e7eb;
+  background: #fff;
+}
+
+.page-title {
+  font-size: 16px;
+  font-weight: 600;
+  color: #111827;
+}
+
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.username {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.main {
+  background: #f3f4f6;
+}
+</style>

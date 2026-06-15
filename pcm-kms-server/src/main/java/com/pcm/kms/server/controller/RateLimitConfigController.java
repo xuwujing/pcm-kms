@@ -1,5 +1,6 @@
 package com.pcm.kms.server.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.pcm.kms.common.response.ApiResponse;
 import com.pcm.kms.domain.model.AppRateLimit;
@@ -20,13 +21,8 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/**
- * 限流配置控制器
- * <p>
- * 支持全局默认配置 + 每应用单独配置。
- * 应用未配置时使用全局默认值。
- */
 @Slf4j
+@SaCheckLogin
 @Tag(name = "限流配置")
 @RestController
 @RequestMapping("/api/admin/ratelimit")
@@ -37,7 +33,7 @@ public class RateLimitConfigController {
     private final AppRateLimitMapper appRateLimitMapper;
     private final ClientAppMapper clientAppMapper;
 
-    @GetMapping("/global")
+    @GetMapping
     @Operation(summary = "获取全局限流配置")
     public ApiResponse<Map<String, Object>> getGlobalConfig() {
         Map<String, Object> config = new HashMap<>();
@@ -46,10 +42,10 @@ public class RateLimitConfigController {
         return ApiResponse.success(config);
     }
 
-    @PutMapping("/global")
+    @PutMapping
     @Operation(summary = "更新全局限流配置")
     public ApiResponse<Map<String, Object>> updateGlobalConfig(@RequestBody RateLimitConfigRequest request) {
-        log.info("更新全局限流配置: enabled={}, maxPerMinute={}", request.getEnabled(), request.getMaxPerMinute());
+        log.info("update global rate limit: enabled={}, maxPerMinute={}", request.getEnabled(), request.getMaxPerMinute());
         if (request.getMaxPerMinute() != null) {
             kmsProperties.getRateLimit().setMaxPerMinute(request.getMaxPerMinute());
         }
@@ -60,7 +56,7 @@ public class RateLimitConfigController {
     }
 
     @GetMapping("/apps")
-    @Operation(summary = "获取所有应用的限流配置")
+    @Operation(summary = "获取应用级限流配置")
     public ApiResponse<List<Map<String, Object>>> listAppConfigs() {
         List<ClientApp> apps = clientAppMapper.selectList(
                 new LambdaQueryWrapper<ClientApp>().eq(ClientApp::getEnabled, true)
@@ -85,7 +81,7 @@ public class RateLimitConfigController {
                 item.put("isCustom", true);
             } else {
                 item.put("maxPerMinute", kmsProperties.getRateLimit().getMaxPerMinute());
-                item.put("enabled", true);
+                item.put("enabled", kmsProperties.getRateLimit().isEnabled());
                 item.put("isCustom", false);
             }
             result.add(item);
@@ -94,10 +90,8 @@ public class RateLimitConfigController {
     }
 
     @PostMapping("/apps")
-    @Operation(summary = "设置应用限流配置")
+    @Operation(summary = "设置应用级限流配置")
     public ApiResponse<Void> setAppConfig(@RequestBody AppRateLimitRequest request) {
-        log.info("设置应用限流: clientId={}, maxPerMinute={}", request.getClientId(), request.getMaxPerMinute());
-
         AppRateLimit limit = appRateLimitMapper.selectOne(
                 new LambdaQueryWrapper<AppRateLimit>().eq(AppRateLimit::getClientId, request.getClientId())
         );
@@ -123,7 +117,7 @@ public class RateLimitConfigController {
     }
 
     @DeleteMapping("/apps/{clientId}")
-    @Operation(summary = "删除应用限流配置（恢复使用全局默认）")
+    @Operation(summary = "删除应用级限流配置")
     public ApiResponse<Void> deleteAppConfig(@PathVariable String clientId) {
         appRateLimitMapper.delete(
                 new LambdaQueryWrapper<AppRateLimit>().eq(AppRateLimit::getClientId, clientId)

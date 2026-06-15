@@ -1,7 +1,7 @@
 package com.pcm.kms.server.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.baomidou.mybatisplus.core.metadata.IPage;
-import com.baomidou.mybatisplus.extension.plugins.pagination.Page;
 import com.pcm.kms.common.response.ApiResponse;
 import com.pcm.kms.domain.model.ClientApp;
 import com.pcm.kms.server.dto.CreateClientAppRequest;
@@ -11,8 +11,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
-import java.util.List;
-
+@SaCheckLogin
 @Tag(name = "应用管理")
 @RestController
 @RequestMapping("/api/admin/apps")
@@ -28,7 +27,7 @@ public class ClientAppController {
     }
 
     @GetMapping
-    @Operation(summary = "应用列表（分页）")
+    @Operation(summary = "应用列表")
     public ApiResponse<IPage<ClientApp>> list(
             @RequestParam(defaultValue = "1") Integer page,
             @RequestParam(defaultValue = "20") Integer size) {

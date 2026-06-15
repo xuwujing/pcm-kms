@@ -1,5 +1,6 @@
 package com.pcm.kms.server.controller;
 
+import cn.dev33.satoken.annotation.SaCheckLogin;
 import com.baomidou.mybatisplus.core.conditions.query.LambdaQueryWrapper;
 import com.pcm.kms.common.response.ApiResponse;
 import com.pcm.kms.domain.model.User;
@@ -15,10 +16,8 @@ import org.springframework.web.bind.annotation.*;
 import java.time.LocalDateTime;
 import java.util.List;
 
-/**
- * 用户管理控制器
- */
 @Slf4j
+@SaCheckLogin
 @Tag(name = "用户管理")
 @RestController
 @RequestMapping("/api/admin/users")
@@ -38,9 +37,6 @@ public class UserController {
     @PostMapping
     @Operation(summary = "创建用户")
     public ApiResponse<User> create(@RequestBody CreateUserRequest request) {
-        log.info("创建用户: username={}", request.getUsername());
-
-        // 检查用户名是否已存在
         User existing = userMapper.selectOne(
                 new LambdaQueryWrapper<User>().eq(User::getUsername, request.getUsername())
         );
@@ -56,8 +52,6 @@ public class UserController {
         user.setCreatedAt(LocalDateTime.now());
         user.setUpdatedAt(LocalDateTime.now());
         userMapper.insert(user);
-
-        // 不返回密码
         user.setPassword(null);
         return ApiResponse.success(user);
     }
@@ -65,7 +59,6 @@ public class UserController {
     @PutMapping
     @Operation(summary = "编辑用户")
     public ApiResponse<User> update(@RequestBody UpdateUserRequest request) {
-        log.info("编辑用户: id={}", request.getId());
         User user = userMapper.selectById(request.getId());
         if (user == null) {
             return ApiResponse.error(404, "用户不存在");
@@ -80,14 +73,12 @@ public class UserController {
     }
 
     @PostMapping("/{id}/enable")
-    @Operation(summary = "启用/禁用用户")
+    @Operation(summary = "启用或禁用用户")
     public ApiResponse<Void> enable(@PathVariable Long id, @RequestParam Boolean enabled) {
-        log.info("启用/禁用用户: id={}, enabled={}", id, enabled);
         User user = userMapper.selectById(id);
         if (user == null) {
             return ApiResponse.error(404, "用户不存在");
         }
-        // 不允许禁用 admin
         if ("admin".equals(user.getUsername()) && !enabled) {
             return ApiResponse.error(400, "不允许禁用管理员账号");
         }
@@ -100,7 +91,6 @@ public class UserController {
     @PostMapping("/{id}/reset-password")
     @Operation(summary = "重置密码")
     public ApiResponse<Void> resetPassword(@PathVariable Long id) {
-        log.info("重置密码: id={}", id);
         User user = userMapper.selectById(id);
         if (user == null) {
             return ApiResponse.error(404, "用户不存在");

@@ -1,73 +1,70 @@
 <template>
-  <div>
-    <el-row :gutter="20">
-      <!-- 加密 -->
+  <div class="crypto-page">
+    <el-row :gutter="16">
       <el-col :span="12">
         <el-card>
           <template #header>加密</template>
-          <el-form label-width="80px">
-            <el-form-item label="密钥别名">
-              <el-input v-model="encryptForm.alias" placeholder="如 kms_xxx_default" />
+          <el-form label-width="100px">
+            <el-form-item label="别名">
+              <el-input v-model="encryptForm.alias" placeholder="user-phone-aes" />
             </el-form-item>
-            <el-form-item label="应用组">
+            <el-form-item label="应用分组">
               <el-input v-model="encryptForm.clientGroup" placeholder="default" />
             </el-form-item>
             <el-form-item label="明文">
-              <el-input v-model="encryptForm.plainText" type="textarea" :rows="3" />
+              <el-input v-model="encryptForm.plainText" type="textarea" :rows="4" />
             </el-form-item>
             <el-form-item>
-              <el-button type="primary" @click="handleEncrypt">加密</el-button>
+              <el-button type="primary" @click="handleEncrypt">执行加密</el-button>
             </el-form-item>
-            <el-form-item v-if="encryptResult" label="密文">
-              <el-input :model-value="encryptResult.cipherText" type="textarea" :rows="3" readonly />
+            <el-form-item label="密文">
+              <el-input :model-value="encryptResult?.cipherText || ''" type="textarea" :rows="4" readonly />
             </el-form-item>
           </el-form>
         </el-card>
       </el-col>
 
-      <!-- 解密 -->
       <el-col :span="12">
         <el-card>
           <template #header>解密</template>
-          <el-form label-width="80px">
-            <el-form-item label="密钥别名">
-              <el-input v-model="decryptForm.alias" placeholder="如 kms_xxx_default" />
+          <el-form label-width="100px">
+            <el-form-item label="别名">
+              <el-input v-model="decryptForm.alias" placeholder="user-phone-aes" />
             </el-form-item>
-            <el-form-item label="应用组">
+            <el-form-item label="应用分组">
               <el-input v-model="decryptForm.clientGroup" placeholder="default" />
             </el-form-item>
             <el-form-item label="密文">
-              <el-input v-model="decryptForm.cipherText" type="textarea" :rows="3" />
+              <el-input v-model="decryptForm.cipherText" type="textarea" :rows="4" />
             </el-form-item>
             <el-form-item>
-              <el-button type="success" @click="handleDecrypt">解密</el-button>
+              <el-button type="success" @click="handleDecrypt">执行解密</el-button>
             </el-form-item>
-            <el-form-item v-if="decryptResult" label="明文">
-              <el-input :model-value="decryptResult.plainText" type="textarea" :rows="3" readonly />
+            <el-form-item label="明文">
+              <el-input :model-value="decryptResult?.plainText || ''" type="textarea" :rows="4" readonly />
             </el-form-item>
           </el-form>
         </el-card>
       </el-col>
     </el-row>
 
-    <!-- 摘要 -->
-    <el-card style="margin-top: 20px;">
+    <el-card class="digest-card">
       <template #header>摘要</template>
-      <el-form label-width="80px" inline>
+      <el-form inline label-width="100px">
         <el-form-item label="算法">
-          <el-select v-model="digestForm.algorithm">
+          <el-select v-model="digestForm.algorithm" style="width: 140px">
             <el-option label="MD5" value="md5" />
             <el-option label="SM3" value="sm3" />
           </el-select>
         </el-form-item>
-        <el-form-item label="原文">
-          <el-input v-model="digestForm.plainText" style="width: 300px" />
+        <el-form-item label="明文">
+          <el-input v-model="digestForm.plainText" style="width: 320px" />
         </el-form-item>
         <el-form-item>
           <el-button type="warning" @click="handleDigest">计算摘要</el-button>
         </el-form-item>
-        <el-form-item v-if="digestResult" label="结果">
-          <el-input :model-value="digestResult.cipherText" readonly style="width: 400px" />
+        <el-form-item label="摘要结果">
+          <el-input :model-value="digestResult?.cipherText || ''" style="width: 420px" readonly />
         </el-form-item>
       </el-form>
     </el-card>
@@ -77,11 +74,22 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { encrypt, decrypt, digest } from '../api'
+import { decrypt, digest, encrypt } from '../api'
 
-const encryptForm = ref({ alias: '', clientGroup: 'default', plainText: '' })
-const decryptForm = ref({ alias: '', clientGroup: 'default', cipherText: '' })
-const digestForm = ref({ algorithm: 'md5', plainText: '' })
+const encryptForm = ref({
+  alias: '',
+  clientGroup: 'default',
+  plainText: '',
+})
+const decryptForm = ref({
+  alias: '',
+  clientGroup: 'default',
+  cipherText: '',
+})
+const digestForm = ref({
+  algorithm: 'md5',
+  plainText: '',
+})
 
 const encryptResult = ref(null)
 const decryptResult = ref(null)
@@ -93,7 +101,7 @@ const handleEncrypt = async () => {
     return
   }
   const res = await encrypt(encryptForm.value)
-  encryptResult.value = res.data
+  encryptResult.value = res.data || res
 }
 
 const handleDecrypt = async () => {
@@ -102,15 +110,27 @@ const handleDecrypt = async () => {
     return
   }
   const res = await decrypt(decryptForm.value)
-  decryptResult.value = res.data
+  decryptResult.value = res.data || res
 }
 
 const handleDigest = async () => {
   if (!digestForm.value.plainText) {
-    ElMessage.warning('请输入原文')
+    ElMessage.warning('请填写明文')
     return
   }
   const res = await digest(digestForm.value)
-  digestResult.value = res.data
+  digestResult.value = res.data || res
 }
 </script>
+
+<style scoped>
+.crypto-page {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.digest-card {
+  margin-top: 4px;
+}
+</style>
