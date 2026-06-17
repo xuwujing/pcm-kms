@@ -39,6 +39,7 @@
         <lombok.version>1.18.30</lombok.version>
         <mysql.connector.version>8.0.33</mysql.connector.version>
         <caffeine.version>2.9.3</caffeine.version>
+        <spring.security.crypto.version>5.8.6</spring.security.crypto.version>
     </properties>
 
     <dependencyManagement>
@@ -140,6 +141,12 @@
                 <groupId>com.github.ben-manes.caffeine</groupId>
                 <artifactId>caffeine</artifactId>
                 <version>${caffeine.version}</version>
+            </dependency>
+            <!-- Spring Security Crypto（仅用于 BCrypt 密码哈希，不依赖完整 Spring Security） -->
+            <dependency>
+                <groupId>org.springframework.security</groupId>
+                <artifactId>spring-security-crypto</artifactId>
+                <version>${spring.security.crypto.version}</version>
             </dependency>
         </dependencies>
     </dependencyManagement>

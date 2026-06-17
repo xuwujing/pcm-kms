@@ -29,11 +29,13 @@ management:
 # KMS 业务配置
 kms:
   security:
-    strict-sign: false
-    request-expire-seconds: 300
+    strict-sign: false               # 是否严格校验客户端签名（开发环境建议关闭，生产必须开启）
+    request-expire-seconds: 300       # 请求过期时间（秒），防止重放攻击
   ratelimit:
-    enabled: true
-    max-per-minute: 60
+    enabled: true                     # 是否启用接口限流
+    max-per-minute: 60                # 每个 IP/clientId 每分钟最大请求数
+  cors:
+    allowed-origins: "*"              # 允许的跨域域名，多个用英文逗号分隔，如: http://localhost:5173,https://xxx.com
 
 knife4j:
   enable: true

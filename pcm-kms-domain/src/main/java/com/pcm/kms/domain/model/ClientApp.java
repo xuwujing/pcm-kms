@@ -31,6 +31,8 @@ public class ClientApp implements Serializable {
     private Boolean enabled;
     /** 签名公钥（启用后生成） */
     private String signPublicKey;
+    /** 备注 */
+    private String remark;
     /** 创建时间 */
     private LocalDateTime createdAt;
     /** 更新时间 */

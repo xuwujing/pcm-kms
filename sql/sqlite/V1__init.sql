@@ -19,6 +19,7 @@ CREATE TABLE IF NOT EXISTS kms_client_app (
     , job_no          TEXT                                -- 联系人工号
     , enabled         INTEGER NOT NULL DEFAULT 0          -- 启用状态：0=未启用 1=已启用
     , sign_public_key TEXT                                -- 签名验签公钥（PEM格式），启用后自动生成
+    , remark          TEXT                                -- 应用备注/用途说明
     , created_at      TEXT NOT NULL                       -- 创建时间
     , updated_at      TEXT                                -- 最后更新时间
     , deleted         INTEGER NOT NULL DEFAULT 0          -- 逻辑删除：0=未删除，非0=已删除
@@ -95,7 +96,7 @@ CREATE TABLE IF NOT EXISTS kms_audit_log (
 
 -- ----------------------------------------------------------------------------
 -- 用户表：管理后台登录用户
--- 密码使用 MD5 存储（后续版本升级为 BCrypt）
+-- 密码使用 BCrypt 加密存储（兼容旧版 MD5，首次登录自动迁移）
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS kms_user (
     id              INTEGER PRIMARY KEY AUTOINCREMENT  -- 主键
@@ -107,9 +108,9 @@ CREATE TABLE IF NOT EXISTS kms_user (
     , updated_at      TEXT                                -- 最后更新时间
 );
 
--- 初始管理员账号：admin / 123456
+-- 初始管理员账号：admin / 123456（BCrypt 加密）
 INSERT OR IGNORE INTO kms_user (id, username, password, nickname, enabled, created_at)
-VALUES (1, 'admin', 'e10adc3949ba59abbe56e057f20f883e', '管理员', 1, datetime('now'));
+VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '管理员', 1, datetime('now'));
 
 -- ----------------------------------------------------------------------------
 -- 应用限流配置表：每个应用单独的限流配置，覆盖全局默认值

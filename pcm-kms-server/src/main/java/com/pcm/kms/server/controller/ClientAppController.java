@@ -11,6 +11,8 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import javax.validation.Valid;
+
 @SaCheckLogin
 @Tag(name = "应用管理")
 @RestController
@@ -22,7 +24,7 @@ public class ClientAppController {
 
     @PostMapping
     @Operation(summary = "创建应用")
-    public ApiResponse<ClientApp> create(@RequestBody CreateClientAppRequest request) {
+    public ApiResponse<ClientApp> create(@Valid @RequestBody CreateClientAppRequest request) {
         return ApiResponse.success(clientAppService.create(request));
     }
 

@@ -12,7 +12,7 @@ PCM-KMS 是一个密钥管理系统，用于统一管理应用系统的加密密
 - 📦 双数据库模式：MySQL（生产）+ SQLite（开发/单机），自动切换
 - 💾 缓存降级：Redis 优先，不可用时自动降级为 Caffeine 本地缓存
 - 🔑 多租户隔离：按应用组（clientGroup）隔离密钥，客户端签名鉴权
-- 🛡️ 安全防护：密钥加密存储、传输签名、限流控制、审计日志
+- 🛡️ 安全防护：主密钥加密存储、BCrypt 密码、传输签名、nonce 防重放、限流控制、审计日志
 - 🎨 管理后台：Vue 3 + Element Plus，开箱即用
 - 🚀 一键启动：SQLite 模式零依赖，`java -jar` 即可运行
 - 🐳 Docker 支持：docker-compose 一键部署
@@ -28,6 +28,8 @@ PCM-KMS 是一个密钥管理系统，用于统一管理应用系统的加密密
 | Sa-Token | 1.37 | 轻量 RBAC 权限认证 |
 | BouncyCastle | 1.79 | 国密算法（SM2/SM3/SM4） |
 | Knife4j | 4.3 | OpenAPI 3 接口文档 |
+| Caffeine | 2.9.3 | 本地缓存（nonce/限流计数器） |
+| Spring Security Crypto | 5.8.6 | BCrypt 密码加密 |
 | Flyway | 9.x | 数据库版本管理 |
 
 ### 前端
@@ -278,14 +280,18 @@ pcm-kms/
 | `kms.security.request-expire-seconds` | 300 | 请求有效期（秒） |
 | `kms.ratelimit.enabled` | true | 是否启用限流 |
 | `kms.ratelimit.max-per-minute` | 60 | 每分钟最大请求数 |
+| `kms.cors.allowed-origins` | * | 允许的跨域域名（逗号分隔，生产环境请指定具体域名） |
 | `PCM_KMS_MASTER_KEY` | — | 主密钥（环境变量，用于密钥材料加密存储） |
 
 ## 安全说明
 
-- **密钥加密存储**：私钥和对称密钥使用主密钥二次加密后落库，主密钥通过环境变量 `PCM_KMS_MASTER_KEY` 注入
+- **主密钥加密存储**：私钥和对称密钥使用主密钥（AES-256-CBC）二次加密后落库，主密钥通过环境变量 `PCM_KMS_MASTER_KEY` 注入
+- **BCrypt 密码**：管理后台密码使用 BCrypt 哈希存储（兼容旧版 MD5 自动迁移）
+- **SM4 CBC 模式**：SM4 使用 CBC + 随机 IV 加密，相同明文产生不同密文
 - **传输签名**：所有加解密 API 请求需携带 HMAC-SHA256 签名，防止篡改和重放
-- **防重放**：基于 nonce + timestamp 的请求去重机制
-- **限流控制**：基于 IP/clientId 的分钟级滑动窗口限流
+- **nonce 防重放**：基于 Caffeine 缓存的 nonce 去重（50000 条 + 10 分钟 TTL 自动过期）
+- **限流控制**：基于 IP/clientId 的分钟级滑动窗口限流（Caffeine 缓存 + 1 分钟自动清理）
+- **异常信息保护**：系统异常不暴露内部细节，只返回通用提示
 - **审计日志**：所有加解密操作记录审计日志，不记录明文
 
 ## 压力测试
@@ -365,6 +371,7 @@ MySQL 模式参考 docker-compose.yml 中的 MySQL 配置。
 |------|------|
 | v0.1.0 | 项目骨架 + 基础框架 |
 | v0.2.0 | 密钥管理 + 加解密 + 前端 + SDK + 限流 + Docker |
+| v0.3.0 | 安全增强：主密钥加密存储、BCrypt 密码、SM4 CBC、Caffeine 缓存、密钥轮转优化、Bug 修复 |
 
 ## 开源协议
 

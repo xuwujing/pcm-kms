@@ -8,6 +8,7 @@ import com.pcm.kms.common.enums.KeySourceEnum;
 import com.pcm.kms.common.exception.KmsException;
 import com.pcm.kms.common.util.IdUtil;
 import com.pcm.kms.core.crypto.CryptoService;
+import com.pcm.kms.core.crypto.MasterKeyService;
 import com.pcm.kms.domain.model.*;
 import com.pcm.kms.infra.mapper.*;
 import com.pcm.kms.server.dto.CreateClientAppRequest;
@@ -22,8 +23,12 @@ import java.util.List;
 /**
  * 客户端应用管理服务
  * <p>
- * 负责应用的创建、启用、查询。启用时自动生成接入凭证（clientId/clientSecret）
- * 和默认密钥（签名密钥 + AES 对称密钥），并自动授权。
+ * 负责应用的创建、启用、查询、删除。
+ * <ul>
+ *   <li>创建时仅登记应用信息（clientId 可选，可自动生成）</li>
+ *   <li>启用时自动生成接入凭证（clientId/clientSecret）和默认密钥</li>
+ *   <li>删除时级联清理关联的密钥元数据、密钥材料和授权关系</li>
+ * </ul>
  */
 @Slf4j
 @Service
@@ -35,12 +40,14 @@ public class ClientAppService {
     private final KeyMaterialMapper keyMaterialMapper;
     private final ClientKeyPermissionMapper permissionMapper;
     private final CryptoService cryptoService;
+    private final MasterKeyService masterKeyService;
     private final AuditLogService auditLogService;
 
     /**
      * 创建应用（未启用状态）
      * <p>
      * 仅登记应用信息，不生成接入凭证。需调用 {@link #enable(Long)} 启用后才能使用。
+     * clientId 可选：如果未提供，将在启用时自动生成。
      *
      * @param request 创建请求（名称、应用组、联系人等）
      * @return 创建后的应用对象
@@ -49,25 +56,30 @@ public class ClientAppService {
     public ClientApp create(CreateClientAppRequest request) {
         log.info("创建应用: clientId={}, name={}", request.getClientId(), request.getClientName());
 
-        if (request.getClientId() == null || request.getClientId().isEmpty()) {
-            throw new KmsException(400, "服务标识(clientId)不能为空");
+        if (request.getClientName() == null || request.getClientName().isEmpty()) {
+            throw new KmsException(400, "应用名称不能为空");
         }
 
-        // 检查 clientId 唯一性
-        Long count = clientAppMapper.selectCount(
-                new LambdaQueryWrapper<ClientApp>().eq(ClientApp::getClientId, request.getClientId())
-        );
-        if (count > 0) {
-            throw new KmsException(400, "服务标识已存在: " + request.getClientId());
+        // clientId 可选：为空时在启用时自动生成
+        String clientId = request.getClientId();
+        if (clientId != null && !clientId.isEmpty()) {
+            // 检查 clientId 唯一性
+            Long count = clientAppMapper.selectCount(
+                    new LambdaQueryWrapper<ClientApp>().eq(ClientApp::getClientId, clientId)
+            );
+            if (count > 0) {
+                throw new KmsException(400, "服务标识已存在: " + clientId);
+            }
         }
 
         ClientApp app = new ClientApp();
-        app.setClientId(request.getClientId());
+        app.setClientId(clientId);
         app.setClientName(request.getClientName());
         app.setClientGroup(request.getClientGroup() != null ? request.getClientGroup() : "default");
         app.setContacts(request.getContacts());
         app.setMobile(request.getMobile());
         app.setJobNo(request.getJobNo());
+        app.setRemark(request.getRemark());
         app.setEnabled(false);
         app.setCreatedAt(LocalDateTime.now());
         app.setUpdatedAt(LocalDateTime.now());
@@ -75,7 +87,7 @@ public class ClientAppService {
 
         log.info("应用创建成功: id={}, clientId={}, name={}", app.getId(), app.getClientId(), app.getClientName());
         auditLogService.log("app_create", "system", "ClientApp", app.getId().toString(), "success",
-                "服务标识: " + request.getClientId());
+                "应用名称: " + request.getClientName());
         return app;
     }
 
@@ -83,13 +95,16 @@ public class ClientAppService {
      * 启用应用
      * <p>
      * 执行以下操作：
-     * 1. 生成 clientId / clientSecret 接入凭证
-     * 2. 生成 RSA 签名密钥对（用于请求签名验签）
-     * 3. 生成 AES 默认对称加密密钥
-     * 4. 自动授权这两个密钥给该客户端
+     * <ol>
+     *   <li>生成 clientId（如未提供）和 clientSecret 接入凭证</li>
+     *   <li>生成 RSA 签名密钥对（用于请求签名验签）</li>
+     *   <li>生成 AES 默认对称加密密钥</li>
+     *   <li>自动授权这两个密钥给该客户端</li>
+     * </ol>
+     * 私钥和对称密钥使用主密钥加密后存储。
      *
      * @param id 应用ID
-     * @return 启用后的应用对象（含 clientId/clientSecret）
+     * @return 启用后的应用对象（含 clientId/clientSecret，仅此一次完整返回）
      * @throws KmsException 应用不存在或已启用时抛出
      */
     @Transactional
@@ -106,27 +121,34 @@ public class ClientAppService {
             throw new KmsException(400, "应用已启用");
         }
 
-        // 1. 生成 clientSecret
+        // 1. 生成 clientId（如未提供）和 clientSecret
+        if (app.getClientId() == null || app.getClientId().isEmpty()) {
+            app.setClientId(IdUtil.generateClientId());
+            log.info("自动生成 clientId: {}", app.getClientId());
+        }
         app.setClientSecret(IdUtil.generateClientSecret());
         log.info("生成接入凭证: clientId={}, secret=***", app.getClientId());
 
-        // 2. 生成签名密钥对
+        // 2. 生成签名密钥对（私钥使用主密钥加密存储）
         KeyMaterial signKeyMaterial = cryptoService.generateKeyMaterial(AlgorithmEnum.SIGN);
         signKeyMaterial.setSecretId(IdUtil.generateSecretId());
+        encryptSensitiveFields(signKeyMaterial);
         signKeyMaterial.setCreatedAt(LocalDateTime.now());
         signKeyMaterial.setUpdatedAt(LocalDateTime.now());
         keyMaterialMapper.insert(signKeyMaterial);
         log.info("生成签名密钥: secretId={}", signKeyMaterial.getSecretId());
 
+        // 签名公钥存入应用记录（公钥无需加密）
         app.setSignPublicKey(signKeyMaterial.getPublicKey());
 
         KeyMetadata signKeyMeta = buildKeyMetadata(app.getClientGroup(), signKeyMaterial.getSecretId(),
                 AlgorithmEnum.SIGN, app.getClientId() + "_sign", "默认签名密钥", "sign");
         keyMetadataMapper.insert(signKeyMeta);
 
-        // 3. 生成默认 AES 密钥
+        // 3. 生成默认 AES 密钥（对称密钥使用主密钥加密存储）
         KeyMaterial aesKeyMaterial = cryptoService.generateKeyMaterial(AlgorithmEnum.AES);
         aesKeyMaterial.setSecretId(IdUtil.generateSecretId());
+        encryptSensitiveFields(aesKeyMaterial);
         aesKeyMaterial.setCreatedAt(LocalDateTime.now());
         aesKeyMaterial.setUpdatedAt(LocalDateTime.now());
         keyMaterialMapper.insert(aesKeyMaterial);
@@ -172,6 +194,8 @@ public class ClientAppService {
 
     /**
      * 删除应用
+     * <p>
+     * 级联清理：删除授权关系、关联的密钥元数据和密钥材料。
      */
     @Transactional
     public void delete(Long id) {
@@ -180,13 +204,31 @@ public class ClientAppService {
         if (app == null) {
             throw new KmsException(404, "应用不存在");
         }
-        clientAppMapper.deleteById(id);
-        // 同时删除授权关系
-        if (app.getClientId() != null) {
+
+        String clientId = app.getClientId();
+        if (clientId != null) {
+            // 1. 查询该应用的所有授权关系
+            List<ClientKeyPermission> perms = permissionMapper.selectList(
+                    new LambdaQueryWrapper<ClientKeyPermission>().eq(ClientKeyPermission::getClientId, clientId)
+            );
+            // 2. 清理关联的密钥元数据和密钥材料
+            for (ClientKeyPermission perm : perms) {
+                keyMetadataMapper.delete(
+                        new LambdaQueryWrapper<KeyMetadata>().eq(KeyMetadata::getSecretId, perm.getSecretId())
+                );
+                keyMaterialMapper.delete(
+                        new LambdaQueryWrapper<KeyMaterial>().eq(KeyMaterial::getSecretId, perm.getSecretId())
+                );
+            }
+            // 3. 删除授权关系
             permissionMapper.delete(
-                    new LambdaQueryWrapper<ClientKeyPermission>().eq(ClientKeyPermission::getClientId, app.getClientId())
+                    new LambdaQueryWrapper<ClientKeyPermission>().eq(ClientKeyPermission::getClientId, clientId)
             );
         }
+
+        // 4. 删除应用
+        clientAppMapper.deleteById(id);
+        log.info("应用删除成功: id={}, clientId={}", id, clientId);
         auditLogService.log("app_delete", "system", "ClientApp", id.toString(), "success",
                 "删除应用: " + app.getClientName());
     }
@@ -271,5 +313,19 @@ public class ClientAppService {
         meta.setUpdatedAt(LocalDateTime.now());
         meta.setCreator("system");
         return meta;
+    }
+
+    /**
+     * 加密敏感字段（入库前调用）
+     * <p>
+     * 对私钥和对称密钥使用主密钥加密后替换原值，公钥无需加密。
+     */
+    private void encryptSensitiveFields(KeyMaterial material) {
+        if (material.getPrivateKey() != null) {
+            material.setPrivateKey(masterKeyService.encrypt(material.getPrivateKey()));
+        }
+        if (material.getSecretKey() != null) {
+            material.setSecretKey(masterKeyService.encrypt(material.getSecretKey()));
+        }
     }
 }

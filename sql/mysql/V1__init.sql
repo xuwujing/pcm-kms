@@ -18,6 +18,7 @@ CREATE TABLE IF NOT EXISTS kms_client_app (
     job_no          VARCHAR(64)                        COMMENT '联系人工号',
     enabled         TINYINT(1) NOT NULL DEFAULT 0      COMMENT '启用状态：0=未启用 1=已启用',
     sign_public_key TEXT                               COMMENT '签名验签公钥（PEM格式），启用后自动生成',
+    remark          VARCHAR(256)                       COMMENT '应用备注/用途说明',
     created_at      DATETIME NOT NULL                  COMMENT '创建时间',
     updated_at      DATETIME                           COMMENT '最后更新时间',
     deleted         BIGINT NOT NULL DEFAULT 0          COMMENT '逻辑删除：0=未删除，非0=已删除'
@@ -90,7 +91,7 @@ CREATE TABLE IF NOT EXISTS kms_audit_log (
 
 -- ----------------------------------------------------------------------------
 -- 用户表：管理后台登录用户
--- 密码使用 MD5 存储（后续版本升级为 BCrypt）
+-- 密码使用 BCrypt 加密存储（兼容旧版 MD5，首次登录自动迁移）
 -- ----------------------------------------------------------------------------
 CREATE TABLE IF NOT EXISTS kms_user (
     id              BIGINT PRIMARY KEY AUTO_INCREMENT  COMMENT '主键',
@@ -102,6 +103,6 @@ CREATE TABLE IF NOT EXISTS kms_user (
     updated_at      DATETIME                           COMMENT '最后更新时间'
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='用户表-管理后台登录账号';
 
--- 初始管理员账号：admin / 123456
+-- 初始管理员账号：admin / 123456（BCrypt 加密）
 INSERT IGNORE INTO kms_user (id, username, password, nickname, enabled, created_at)
-VALUES (1, 'admin', 'e10adc3949ba59abbe56e057f20f883e', '管理员', 1, NOW());
+VALUES (1, 'admin', '$2a$10$N.zmdr9k7uOCQb376NoUnuTJ8iAt6Z5EHsM8lE9lBOsl7iKTVKIUi', '管理员', 1, NOW());

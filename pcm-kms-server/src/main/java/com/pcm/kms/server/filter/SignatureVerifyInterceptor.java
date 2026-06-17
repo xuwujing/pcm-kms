@@ -1,12 +1,14 @@
 package com.pcm.kms.server.filter;
 
-import com.pcm.kms.common.response.ApiResponse;
+import com.github.benmanes.caffeine.cache.Cache;
+import com.github.benmanes.caffeine.cache.Caffeine;
 import com.pcm.kms.domain.model.ClientApp;
 import com.pcm.kms.server.service.ClientAppService;
 import lombok.RequiredArgsConstructor;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Component;
 import org.springframework.web.servlet.HandlerInterceptor;
+import org.springframework.web.util.ContentCachingRequestWrapper;
 
 import javax.crypto.Mac;
 import javax.crypto.spec.SecretKeySpec;
@@ -14,25 +16,34 @@ import javax.servlet.http.HttpServletRequest;
 import javax.servlet.http.HttpServletResponse;
 import java.nio.charset.StandardCharsets;
 import java.util.Base64;
+import java.util.concurrent.TimeUnit;
 
 /**
  * 客户端签名验证拦截器
  * <p>
  * 对 /api/crypto/** 路径下的接口进行 HMAC-SHA256 签名校验。
+ * <p>
  * 请求需携带以下 Header：
- * - X-Client-Id: 客户端ID
- * - X-Timestamp: 毫秒时间戳
- * - X-Nonce: 随机字符串（防重放）
- * - X-Sign: HMAC-SHA256(clientSecret, body + timestamp + nonce)
+ * <ul>
+ *   <li>X-Client-Id: 客户端ID</li>
+ *   <li>X-Timestamp: 毫秒时间戳</li>
+ *   <li>X-Nonce: 随机字符串（防重放）</li>
+ *   <li>X-Sign: HMAC-SHA256(clientSecret, body + timestamp + nonce)</li>
+ * </ul>
  * <p>
  * 验证步骤：
- * 1. 检查时间戳是否在有效期内（默认 5 分钟）
- * 2. 根据 clientId 查询 clientSecret
- * 3. 重新计算签名并比对
+ * <ol>
+ *   <li>检查时间戳是否在有效期内（默认 5 分钟）</li>
+ *   <li>检查 nonce 是否已使用（Caffeine 缓存 + TTL 自动过期）</li>
+ *   <li>根据 clientId 查询 clientSecret</li>
+ *   <li>读取请求 body，重新计算签名并比对</li>
+ * </ol>
  * <p>
  * 配置项：
- * - kms.security.strict-sign: 是否强制验签（false 时跳过验签，方便开发调试）
- * - kms.security.request-expire-seconds: 请求有效期（秒，默认 300）
+ * <ul>
+ *   <li>kms.security.strict-sign: 是否强制验签（false 时跳过验签，方便开发调试）</li>
+ *   <li>kms.security.request-expire-seconds: 请求有效期（秒，默认 300）</li>
+ * </ul>
  */
 @Slf4j
 @Component
@@ -47,10 +58,17 @@ public class SignatureVerifyInterceptor implements HandlerInterceptor {
     /** 请求有效期（秒） */
     private int requestExpireSeconds = 300;
 
-    /** nonce 缓存（防重放），生产环境应使用 Redis */
-    private final java.util.Set<String> nonceSet = java.util.Collections.newSetFromMap(
-            new java.util.concurrent.ConcurrentHashMap<>()
-    );
+    /**
+     * nonce 缓存（防重放）
+     * <p>
+     * 使用 Caffeine 缓存，key 为 nonce 字符串，value 为 Boolean.TRUE。
+     * 过期时间设为请求有效期的 2 倍，确保过期的请求不会被重放。
+     * 最大缓存 50000 条，超出后按 LRU 淘汰。
+     */
+    private final Cache<String, Boolean> nonceCache = Caffeine.newBuilder()
+            .maximumSize(50000)
+            .expireAfterWrite(10, TimeUnit.MINUTES)
+            .build();
 
     @Override
     public boolean preHandle(HttpServletRequest request, HttpServletResponse response, Object handler) throws Exception {
@@ -86,17 +104,13 @@ public class SignatureVerifyInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // 2. 检查 nonce 防重放
-        if (nonceSet.contains(nonce)) {
+        // 2. 检查 nonce 防重放（Caffeine 缓存自动 TTL 过期）
+        if (nonceCache.getIfPresent(nonce) != null) {
             log.warn("签名验证失败: nonce重复, clientId={}, nonce={}", clientId, nonce);
             writeSignFailResponse(response, "请求已过期（nonce重复）");
             return false;
         }
-        nonceSet.add(nonce);
-        // 清理过期 nonce（简单实现：超过 10000 个时清空）
-        if (nonceSet.size() > 10000) {
-            nonceSet.clear();
-        }
+        nonceCache.put(nonce, Boolean.TRUE);
 
         // 3. 查询 clientSecret
         ClientApp app = clientAppService.getByClientId(clientId);
@@ -106,8 +120,17 @@ public class SignatureVerifyInterceptor implements HandlerInterceptor {
             return false;
         }
 
-        // 4. 计算并比对签名
-        String body = "" ; // 简化：不读 body，后续版本可通过 ContentCachingRequestWrapper 读取
+        // 4. 读取请求 body 并计算签名
+        // 依赖 ContentCachingFilter 将 body 缓存到 ContentCachingRequestWrapper 中
+        String body = "";
+        if (request instanceof ContentCachingRequestWrapper) {
+            ContentCachingRequestWrapper wrapped = (ContentCachingRequestWrapper) request;
+            byte[] buf = wrapped.getContentAsByteArray();
+            if (buf.length > 0) {
+                body = new String(buf, StandardCharsets.UTF_8);
+            }
+        }
+
         String data = body + timestamp + nonce;
         String expectedSign = hmacSha256(app.getClientSecret(), data);
         if (!expectedSign.equals(sign)) {
@@ -122,6 +145,10 @@ public class SignatureVerifyInterceptor implements HandlerInterceptor {
 
     /**
      * HMAC-SHA256 签名计算
+     *
+     * @param key  签名密钥（clientSecret）
+     * @param data 待签名数据（body + timestamp + nonce）
+     * @return Base64 编码的签名值
      */
     private String hmacSha256(String key, String data) {
         try {

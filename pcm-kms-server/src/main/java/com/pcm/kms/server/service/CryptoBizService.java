@@ -13,7 +13,10 @@ import org.springframework.stereotype.Service;
  * 加解密业务服务
  * <p>
  * 对外暴露的加解密业务入口，负责密钥定位、调用加密引擎、记录审计日志。
- * 密钥定位通过 {@link KeyService#getByAlias} 实现别名到密钥材料的映射。
+ * <ul>
+ *   <li>密钥定位通过 {@link KeyService#getByAlias} 实现别名到密钥材料的映射</li>
+ *   <li>解密时支持通过 keyVersion 指定旧版本密钥（密钥轮转过渡期兼容）</li>
+ * </ul>
  */
 @Slf4j
 @Service
@@ -56,18 +59,28 @@ public class CryptoBizService {
 
     /**
      * 解密
+     * <p>
+     * 支持通过 keyVersion 指定旧版本密钥进行解密，用于密钥轮转后的过渡期兼容。
+     * 不指定 keyVersion 时使用最新版本的启用密钥。
      *
-     * @param request 解密请求（cipherText + alias + clientGroup）
+     * @param request 解密请求（cipherText + alias + clientGroup + keyVersion）
      * @return 解密结果（含 plainText、algorithm、keyVersion）
      * @throws KmsException 密钥不存在时抛出
      */
     public CryptoResult decrypt(CryptoRequest request) {
         String clientGroup = request.getClientGroup() != null ? request.getClientGroup() : "default";
-        log.info("解密请求: alias={}, group={}", request.getAlias(), clientGroup);
+        log.info("解密请求: alias={}, group={}, keyVersion={}", request.getAlias(), clientGroup, request.getKeyVersion());
 
-        KeyMetadata metadata = keyService.getByAlias(request.getAlias(), clientGroup);
+        // 支持按版本号查询密钥（轮转后旧版本密钥解密）
+        KeyMetadata metadata;
+        if (request.getKeyVersion() != null) {
+            metadata = keyService.getByAliasAndVersion(request.getAlias(), clientGroup, request.getKeyVersion());
+        } else {
+            metadata = keyService.getByAlias(request.getAlias(), clientGroup);
+        }
         if (metadata == null) {
-            log.warn("解密失败: 密钥不存在, alias={}, group={}", request.getAlias(), clientGroup);
+            log.warn("解密失败: 密钥不存在, alias={}, group={}, version={}",
+                    request.getAlias(), clientGroup, request.getKeyVersion());
             throw new KmsException(404, "密钥不存在: " + request.getAlias());
         }
         KeyMaterial material = keyService.getMaterialBySecretId(metadata.getSecretId());

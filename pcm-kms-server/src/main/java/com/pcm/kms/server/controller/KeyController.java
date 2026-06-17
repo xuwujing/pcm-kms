@@ -12,6 +12,7 @@ import io.swagger.v3.oas.annotations.tags.Tag;
 import lombok.RequiredArgsConstructor;
 import org.springframework.web.bind.annotation.*;
 
+import javax.validation.Valid;
 import java.util.List;
 import java.util.Map;
 
@@ -26,7 +27,7 @@ public class KeyController {
 
     @PostMapping
     @Operation(summary = "创建密钥")
-    public ApiResponse<KeyMetadata> create(@RequestBody CreateKeyRequest request) {
+    public ApiResponse<KeyMetadata> create(@Valid @RequestBody CreateKeyRequest request) {
         return ApiResponse.success(keyService.create(request));
     }
 

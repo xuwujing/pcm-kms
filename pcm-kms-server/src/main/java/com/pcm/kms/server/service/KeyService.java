@@ -8,6 +8,7 @@ import com.pcm.kms.common.enums.KeySourceEnum;
 import com.pcm.kms.common.exception.KmsException;
 import com.pcm.kms.common.util.IdUtil;
 import com.pcm.kms.core.crypto.CryptoService;
+import com.pcm.kms.core.crypto.MasterKeyService;
 import com.pcm.kms.domain.model.*;
 import com.pcm.kms.infra.mapper.ClientAppMapper;
 import com.pcm.kms.infra.mapper.ClientKeyPermissionMapper;
@@ -38,6 +39,7 @@ public class KeyService {
     private final ClientAppMapper clientAppMapper;
     private final ClientKeyPermissionMapper permissionMapper;
     private final CryptoService cryptoService;
+    private final MasterKeyService masterKeyService;
     private final AuditLogService auditLogService;
 
     /**
@@ -81,10 +83,12 @@ public class KeyService {
         // 生成密钥材料
         KeyMaterial material = cryptoService.generateKeyMaterial(algorithm);
         material.setSecretId(IdUtil.generateSecretId());
+        // 使用主密钥加密私钥和对称密钥后落库
+        encryptSensitiveFields(material);
         material.setCreatedAt(LocalDateTime.now());
         material.setUpdatedAt(LocalDateTime.now());
         keyMaterialMapper.insert(material);
-        log.info("密钥材料已生成: secretId={}, algorithm={}", material.getSecretId(), algorithm.getCode());
+        log.info("密钥材料已生成并加密存储: secretId={}, algorithm={}", material.getSecretId(), algorithm.getCode());
 
         // 创建元数据
         KeyMetadata metadata = new KeyMetadata();
@@ -174,6 +178,28 @@ public class KeyService {
     }
 
     /**
+     * 按别名和版本号查询密钥元数据
+     * <p>
+     * 用于解密时指定旧版本密钥。不限 enabled 状态，因为轮转后旧版本会被禁用但仍可用于解密。
+     *
+     * @param alias       密钥别名
+     * @param clientGroup 应用组
+     * @param keyVersion  密钥版本号
+     * @return 对应版本的密钥元数据，不存在返回 null
+     */
+    public KeyMetadata getByAliasAndVersion(String alias, String clientGroup, int keyVersion) {
+        String group = clientGroup != null ? clientGroup : "default";
+        log.debug("按别名+版本查询密钥: alias={}, group={}, version={}", alias, group, keyVersion);
+        return keyMetadataMapper.selectOne(
+                new LambdaQueryWrapper<KeyMetadata>()
+                        .eq(KeyMetadata::getAlias, alias)
+                        .eq(KeyMetadata::getClientGroup, group)
+                        .eq(KeyMetadata::getKeyVersion, keyVersion)
+                        .last("LIMIT 1")
+        );
+    }
+
+    /**
      * 启用或禁用密钥
      *
      * @param id      密钥元数据ID
@@ -225,6 +251,8 @@ public class KeyService {
         // 生成新密钥材料
         KeyMaterial newMaterial = cryptoService.generateKeyMaterial(algorithm);
         newMaterial.setSecretId(IdUtil.generateSecretId());
+        // 使用主密钥加密私钥和对称密钥后落库
+        encryptSensitiveFields(newMaterial);
         newMaterial.setCreatedAt(LocalDateTime.now());
         newMaterial.setUpdatedAt(LocalDateTime.now());
         keyMaterialMapper.insert(newMaterial);
@@ -246,6 +274,12 @@ public class KeyService {
         newMeta.setUpdatedAt(LocalDateTime.now());
         newMeta.setCreator("system");
         keyMetadataMapper.insert(newMeta);
+
+        // 禁用旧版本密钥（双版本兼容：新版本用于加密，旧版本保留解密能力）
+        old.setEnabled(false);
+        old.setUpdatedAt(LocalDateTime.now());
+        keyMetadataMapper.updateById(old);
+        log.info("旧版本密钥已禁用: alias={}, version={}", old.getAlias(), old.getKeyVersion());
 
         log.info("密钥轮转成功: alias={}, 新版本={}, 新secretId={}",
                 old.getAlias(), newMeta.getKeyVersion(), newMeta.getSecretId());
@@ -269,6 +303,10 @@ public class KeyService {
         // 同时删除授权关系
         permissionMapper.delete(
                 new LambdaQueryWrapper<ClientKeyPermission>().eq(ClientKeyPermission::getSecretId, metadata.getSecretId())
+        );
+        // 删除密钥材料（避免孤儿数据）
+        keyMaterialMapper.delete(
+                new LambdaQueryWrapper<KeyMaterial>().eq(KeyMaterial::getSecretId, metadata.getSecretId())
         );
         auditLogService.log("key_delete", "system", "KeyMetadata", id.toString(), "success", "删除密钥: " + metadata.getAlias());
     }
@@ -342,9 +380,14 @@ public class KeyService {
      */
     public KeyMaterial getMaterialBySecretId(String secretId) {
         log.debug("查询密钥材料: secretId={}", secretId);
-        return keyMaterialMapper.selectOne(
+        KeyMaterial material = keyMaterialMapper.selectOne(
                 new LambdaQueryWrapper<KeyMaterial>().eq(KeyMaterial::getSecretId, secretId)
         );
+        // 从数据库取出后使用主密钥解密私钥和对称密钥
+        if (material != null) {
+            decryptSensitiveFields(material);
+        }
+        return material;
     }
 
     /**
@@ -373,5 +416,39 @@ public class KeyService {
 
         log.info("获取公钥成功: alias={}, version={}", alias, metadata.getKeyVersion());
         return material.getPublicKey();
+    }
+
+    // ==================== 密钥材料加解密辅助方法 ====================
+
+    /**
+     * 加密敏感字段（入库前调用）
+     * <p>
+     * 对私钥和对称密钥使用主密钥加密后替换原值，公钥无需加密。
+     *
+     * @param material 密钥材料
+     */
+    private void encryptSensitiveFields(KeyMaterial material) {
+        if (material.getPrivateKey() != null) {
+            material.setPrivateKey(masterKeyService.encrypt(material.getPrivateKey()));
+        }
+        if (material.getSecretKey() != null) {
+            material.setSecretKey(masterKeyService.encrypt(material.getSecretKey()));
+        }
+    }
+
+    /**
+     * 解密敏感字段（从数据库取出后调用）
+     * <p>
+     * 对私钥和对称密钥使用主密钥解密还原。
+     *
+     * @param material 密钥材料
+     */
+    private void decryptSensitiveFields(KeyMaterial material) {
+        if (material.getPrivateKey() != null) {
+            material.setPrivateKey(masterKeyService.decrypt(material.getPrivateKey()));
+        }
+        if (material.getSecretKey() != null) {
+            material.setSecretKey(masterKeyService.decrypt(material.getSecretKey()));
+        }
     }
 }
