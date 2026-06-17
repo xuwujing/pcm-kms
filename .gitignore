@@ -68,6 +68,7 @@ pnpm-debug.log*
 bak/
 *.bak
 *.tmp
+.git-commit-msg.txt
 
 # ========================
 # 私有文档（托管在独立私有仓库）
